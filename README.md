@@ -23,7 +23,7 @@ Available services:
 - Django + Channels: http://localhost:8000
 - PostgreSQL: localhost:5432
 
-### 4. Apply migrations and create superuser
+### 4. Apply migrations and create a superuser
 Run migrations:
 ```bash
 docker-compose exec web python manage.py migrate
@@ -33,8 +33,12 @@ Create a superuser (optional):
 docker-compose exec web python manage.py createsuperuser
 ```
 
+### 5. Generate static files
+```bash
+docker-compose exec web python manage.py collectstatic
+```
 
-### 5. Work with Django
+### 6. Work with Django
 All commands should be executed inside the web container. Examples:
 ```bash
 docker-compose exec web python manage.py shell
@@ -42,7 +46,7 @@ docker-compose exec web python manage.py makemigrations
 docker-compose exec web python manage.py test
 ```
 
-### 6. Stop containers
+### 7. Stop containers
 ```bash
 docker-compose down
 ```
@@ -59,7 +63,7 @@ docker-compose down
 
 ## 📌 Status
 Early development stage.  
-See [ROADMAP.md](./ROADMAP.md) for roadmap.  
+See [ROADMAP.md](./ROADMAP.md) for the roadmap.  
 
 ---
 
