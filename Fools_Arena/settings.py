@@ -48,7 +48,7 @@ INSTALLED_APPS = [
 
 # WebSockets
 INSTALLED_APPS += ['channels']
-ASGI_APPLICATION = 'myproject.asgi.application'
+ASGI_APPLICATION = 'Fools_Arena.asgi.application'
 
 CHANNEL_LAYERS = {
     "default": {
