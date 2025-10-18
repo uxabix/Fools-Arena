@@ -31,7 +31,7 @@ class CardSuit(models.Model):
             color="red"
         )
     """
-    
+
     id = models.SmallAutoField(primary_key=True)
     name = models.CharField(max_length=20)
     color = models.CharField(max_length=5, choices=[('red', 'Red'), ('black', 'Black')])
@@ -76,7 +76,7 @@ class CardRank(models.Model):
             value=14  # Highest value in most variations
         )
     """
-    
+
     id = models.SmallAutoField(primary_key=True)
     name = models.CharField(max_length=20)
     value = models.IntegerField()
@@ -139,7 +139,7 @@ class Lobby(models.Model):
             status='waiting'
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
@@ -225,7 +225,7 @@ class LobbySettings(models.Model):
             allow_jokers=False
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lobby = models.OneToOneField(Lobby, on_delete=models.CASCADE, related_name='settings')
     max_players = models.PositiveIntegerField()
@@ -258,8 +258,8 @@ class LobbySettings(models.Model):
         Returns:
             bool: True if settings use standard rules without complex features.
         """
-        return (not self.is_transferable and 
-                not self.allow_jokers and 
+        return (not self.is_transferable and
+                not self.allow_jokers and
                 self.special_rule_set is None)
 
     class Meta:
@@ -298,7 +298,7 @@ class LobbyPlayer(models.Model):
         player.status = 'ready'
         player.save()
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lobby = models.ForeignKey(Lobby, on_delete=models.CASCADE, related_name='players')
     user = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
@@ -387,7 +387,7 @@ class Game(models.Model):
         game.finished_at = timezone.now()
         game.save()
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lobby = models.ForeignKey(Lobby, on_delete=models.CASCADE)
     trump_card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='as_trump')
@@ -466,7 +466,7 @@ class GamePlayer(models.Model):
             cards_remaining=6
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='players')
     user = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
@@ -544,7 +544,7 @@ class Card(models.Model):
             special_card=skip_effect
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     suit = models.ForeignKey(CardSuit, on_delete=models.CASCADE)
     rank = models.ForeignKey(CardRank, on_delete=models.CASCADE)
@@ -593,15 +593,15 @@ class Card(models.Model):
         # Trump cards beat non-trump cards
         if self.is_trump(trump_suit) and not other_card.is_trump(trump_suit):
             return True
-        
+
         # Non-trump cannot beat trump
         if not self.is_trump(trump_suit) and other_card.is_trump(trump_suit):
             return False
-        
+
         # Same suit comparison by rank value
         if self.suit == other_card.suit:
             return self.rank.value > other_card.rank.value
-        
+
         # Different non-trump suits cannot beat each other
         return False
 
@@ -609,6 +609,268 @@ class Card(models.Model):
         verbose_name = 'Card'
         verbose_name_plural = 'Cards'
         unique_together = ['suit', 'rank', 'special_card']
+
+
+class SpecialCard(models.Model):
+    """Special card effects model for custom game mechanics.
+
+    Defines special abilities that can be applied to cards to create
+    unique gameplay mechanics beyond standard Durak rules. Each special
+    card type has a specific effect and description.
+
+    Attributes:
+        id (UUIDField): Unique identifier for the special card type.
+        name (CharField): Display name of the special effect.
+        effect_type (CharField): Category of the special effect.
+        effect_value (JSONField): JSON data containing effect parameters.
+        description (TextField): Human-readable description of the effect.
+
+    Effect Types:
+        - 'skip': Skip the next player's turn
+        - 'reverse': Reverse turn order
+        - 'draw': Force target player to draw additional cards
+        - 'custom': Custom effect with parameters in effect_value
+
+    Example:
+        # Create a skip effect card
+        skip_effect = SpecialCard.objects.create(
+            name="Skip Turn",
+            effect_type="skip",
+            effect_value={},
+            description="Next player loses their turn"
+        )
+
+        # Create a draw effect card
+        draw_effect = SpecialCard.objects.create(
+            name="Draw Two",
+            effect_type="draw",
+            effect_value={"card_count": 2},
+            description="Target player draws 2 additional cards"
+        )
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=50)
+    effect_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('skip', 'Skip Turn'),
+            ('reverse', 'Reverse Order'),
+            ('draw', 'Draw Cards'),
+            ('custom', 'Custom Effect')
+        ]
+    )
+    effect_value = models.JSONField(default=dict, blank=True)
+    description = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        """Return string representation of the special card.
+
+        Returns:
+            str: The name of the special card effect.
+        """
+        return self.name
+
+    def get_effect_description(self):
+        """Get a formatted description of the effect with parameters.
+
+        Returns:
+            str: Description with effect values interpolated.
+        """
+        if self.effect_type == 'draw' and 'card_count' in self.effect_value:
+            return f"{self.description} ({self.effect_value['card_count']} cards)"
+        return self.description
+
+    def is_targetable(self):
+        """Check if this effect requires targeting a specific player.
+
+        Returns:
+            bool: True if effect targets other players, False if self-affecting.
+        """
+        return self.effect_type in ['draw', 'skip']
+
+    def can_be_countered(self):
+        """Check if this special effect can be countered by other cards.
+
+        Returns:
+            bool: True if effect can be countered, False otherwise.
+        """
+        return self.effect_value.get('counterable', True)
+
+    class Meta:
+        verbose_name = 'Special Card'
+        verbose_name_plural = 'Special Cards'
+        ordering = ['name']
+
+
+class SpecialRuleSet(models.Model):
+    """Special rule configuration for advanced game variants.
+
+    Defines collections of special rules and cards that can be applied
+    to lobbies to create custom game experiences. Each rule set can
+    specify minimum player requirements and special card inclusions.
+
+    Attributes:
+        id (UUIDField): Unique identifier for the rule set.
+        name (CharField): Display name of the rule set.
+        description (TextField): Detailed description of the rules.
+        min_players (IntegerField): Minimum players required for this rule set.
+
+    Related Objects:
+        special_cards: SpecialCard objects included in this rule set (M2M through SpecialRuleSetCard).
+        lobby_settings: LobbySettings objects using this rule set.
+
+    Example:
+        # Create a beginner-friendly rule set
+        beginner_rules = SpecialRuleSet.objects.create(
+            name="Beginner Special",
+            description="Simple special cards for new players",
+            min_players=2
+        )
+
+        # Create an advanced rule set
+        advanced_rules = SpecialRuleSet.objects.create(
+            name="Master's Challenge",
+            description="Complex special effects for experienced players",
+            min_players=4
+        )
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    description = models.TextField()
+    min_players = models.IntegerField(default=2)
+
+    def __str__(self):
+        """Return string representation of the rule set.
+
+        Returns:
+            str: The name of the rule set.
+        """
+        return self.name
+
+    def get_special_card_count(self):
+        """Get the number of special cards in this rule set.
+
+        Returns:
+            int: Count of special cards associated with this rule set.
+        """
+        return self.specialrulesetcard_set.count()
+
+    def is_compatible_with_player_count(self, player_count):
+        """Check if this rule set can be used with the given number of players.
+
+        Args:
+            player_count (int): Number of players in the game.
+
+        Returns:
+            bool: True if player count meets minimum requirement.
+        """
+        return player_count >= self.min_players
+
+    def get_enabled_special_cards(self):
+        """Get all special cards that are enabled in this rule set.
+
+        Returns:
+            QuerySet: SpecialCard objects that are active in this rule set.
+        """
+        return SpecialCard.objects.filter(
+            specialrulesetcard__rule_set=self,
+            specialrulesetcard__is_enabled=True
+        )
+
+    def can_be_used_in_lobby(self, lobby_settings):
+        """Check if this rule set is compatible with lobby settings.
+
+        Args:
+            lobby_settings (LobbySettings): The lobby settings to check against.
+
+        Returns:
+            bool: True if compatible with lobby configuration.
+        """
+        return (self.is_compatible_with_player_count(lobby_settings.max_players) and
+                lobby_settings.allow_jokers)  # Special cards require jokers enabled
+
+    class Meta:
+        verbose_name = 'Special Rule Set'
+        verbose_name_plural = 'Special Rule Sets'
+        ordering = ['name']
+
+
+class SpecialRuleSetCard(models.Model):
+    """Association model linking special cards to rule sets with configuration.
+
+    Defines which special cards are included in specific rule sets and
+    how they should be configured within that context. Allows for
+    fine-tuned control over special card availability and behavior.
+
+    Attributes:
+        id (UUIDField): Unique identifier for the association.
+        rule_set (ForeignKey): Reference to the SpecialRuleSet.
+        card (ForeignKey): Reference to the SpecialCard.
+        is_enabled (BooleanField): Whether this card is active in the rule set.
+
+    Example:
+        # Add a special card to a rule set
+        SpecialRuleSetCard.objects.create(
+            rule_set=beginner_rules,
+            card=skip_effect,
+            is_enabled=True
+        )
+
+        # Add but disable a complex card for beginners
+        SpecialRuleSetCard.objects.create(
+            rule_set=beginner_rules,
+            card=complex_effect,
+            is_enabled=False
+        )
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    rule_set = models.ForeignKey(SpecialRuleSet, on_delete=models.CASCADE)
+    card = models.ForeignKey(SpecialCard, on_delete=models.CASCADE)
+    is_enabled = models.BooleanField(default=True)
+
+    def __str__(self):
+        """Return string representation of the rule set card association.
+
+        Returns:
+            str: Rule set and card names with status.
+        """
+        status = "enabled" if self.is_enabled else "disabled"
+        return f"{self.card.name} in {self.rule_set.name} ({status})"
+
+    def toggle_enabled(self):
+        """Toggle the enabled status of this card in the rule set.
+
+        Returns:
+            bool: New enabled status after toggling.
+        """
+        self.is_enabled = not self.is_enabled
+        self.save(update_fields=['is_enabled'])
+        return self.is_enabled
+
+    def can_be_used_in_game(self, game):
+        """Check if this special card can be used in a specific game.
+
+        Args:
+            game (Game): The game session to check compatibility with.
+
+        Returns:
+            bool: True if the card is enabled and game allows special rules.
+        """
+        if not self.is_enabled:
+            return False
+
+        lobby_settings = game.lobby.settings
+        return (lobby_settings.special_rule_set == self.rule_set and
+                lobby_settings.allow_jokers)
+
+    class Meta:
+        verbose_name = 'Special Rule Set Card'
+        verbose_name_plural = 'Special Rule Set Cards'
+        unique_together = ['rule_set', 'card']
+        ordering = ['rule_set__name', 'card__name']
 
 
 class GameDeck(models.Model):
@@ -631,7 +893,7 @@ class GameDeck(models.Model):
             position=1
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
     card = models.ForeignKey(Card, on_delete=models.CASCADE)
@@ -681,7 +943,7 @@ class GameDeck(models.Model):
             bool: True if no other cards have higher positions, False otherwise.
         """
         return not GameDeck.objects.filter(
-            game=self.game, 
+            game=self.game,
             position__gt=self.position
         ).exists()
 
@@ -714,7 +976,7 @@ class PlayerHand(models.Model):
             order_in_hand=1
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
     player = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
@@ -741,7 +1003,7 @@ class PlayerHand(models.Model):
             QuerySet: PlayerHand objects ordered by order_in_hand.
         """
         return cls.objects.filter(
-            game=game, 
+            game=game,
             player=player
         ).order_by('order_in_hand')
 
@@ -803,7 +1065,7 @@ class TableCard(models.Model):
         table_card.defense_card = ten_of_hearts
         table_card.save()
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
     attack_card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='attack_card')
@@ -840,7 +1102,7 @@ class TableCard(models.Model):
         """
         if self.is_defended():
             return False  # Already defended
-        
+
         return defense_card.can_beat(self.attack_card, trump_suit)
 
     def defend_with(self, defense_card, trump_suit):
@@ -885,7 +1147,7 @@ class DiscardPile(models.Model):
             position=1
         )
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
     card = models.ForeignKey(Card, on_delete=models.CASCADE)
@@ -913,3 +1175,215 @@ class DiscardPile(models.Model):
         """
         last_position = cls.objects.filter(game=game).count()
         discard_entries = []
+
+
+class Turn(models.Model):
+    """Turn tracking model for managing player turn sequence in games.
+    
+    Represents individual turns within a game session, tracking which player's
+    turn it is and maintaining the sequential order of gameplay. Each turn
+    can contain multiple moves (attack, defend, pickup).
+    
+    Attributes:
+        id (UUIDField): Unique identifier for the turn.
+        game (ForeignKey): Reference to the Game session this turn belongs to.
+        player (ForeignKey): Reference to the User whose turn it is.
+        turn_number (IntegerField): Sequential number of this turn in the game.
+        
+    Related Objects:
+        moves: Move objects that occurred during this turn.
+        
+    Example:
+        # Create a new turn
+        turn = Turn.objects.create(
+            game=game,
+            player=current_player,
+            turn_number=1
+        )
+        
+        # Get the next turn number
+        next_turn = Turn.objects.filter(game=game).count() + 1
+    """
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='turns')
+    player = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
+    turn_number = models.IntegerField()
+    
+    def __str__(self):
+        """Return string representation of the turn.
+        
+        Returns:
+            str: Turn number and player information.
+        """
+        return f"Turn {self.turn_number}: {self.player.username} in {self.game}"
+    
+    def get_moves(self):
+        """Get all moves made during this turn.
+        
+        Returns:
+            QuerySet: Move objects associated with this turn.
+        """
+        return self.moves.all().order_by('created_at')
+    
+    def is_complete(self):
+        """Check if this turn has been completed (has moves).
+        
+        Returns:
+            bool: True if turn has associated moves, False otherwise.
+        """
+        return self.moves.exists()
+    
+    @classmethod
+    def get_current_turn(cls, game):
+        """Get the most recent turn for a game.
+        
+        Args:
+            game (Game): The game to get the current turn for.
+            
+        Returns:
+            Turn: The turn with the highest turn_number, or None if no turns exist.
+        """
+        return cls.objects.filter(game=game).order_by('-turn_number').first()
+    
+    @classmethod
+    def create_next_turn(cls, game, player):
+        """Create the next turn in sequence for a game.
+        
+        Args:
+            game (Game): The game to create a turn for.
+            player (User): The player whose turn it will be.
+            
+        Returns:
+            Turn: The newly created turn object.
+        """
+        next_number = cls.objects.filter(game=game).count() + 1
+        return cls.objects.create(
+            game=game,
+            player=player,
+            turn_number=next_number
+        )
+    
+    class Meta:
+        verbose_name = 'Turn'
+        verbose_name_plural = 'Turns'
+        unique_together = ['game', 'turn_number']
+        ordering = ['turn_number']
+
+
+class Move(models.Model):
+    """Game move model representing individual player actions during gameplay.
+    
+    Tracks specific actions taken by players during their turns, such as
+    attacking with cards, defending attacks, or picking up cards. Each move
+    is associated with a turn and references the relevant table cards.
+    
+    Attributes:
+        id (UUIDField): Unique identifier for the move.
+        turn (ForeignKey): Reference to the Turn this move belongs to.
+        table_card (ForeignKey): Reference to the TableCard affected by this move.
+        action_type (CharField): Type of action performed (attack, defend, pickup).
+        created_at (DateTimeField): Timestamp when the move was made.
+        
+    Action Types:
+        - 'attack': Player places an attacking card on the table
+        - 'defend': Player defends an attack with an appropriate card
+        - 'pickup': Player picks up undefended cards from the table
+        
+    Example:
+        # Record an attack move
+        attack_move = Move.objects.create(
+            turn=current_turn,
+            table_card=table_card,
+            action_type='attack'
+        )
+        
+        # Record a defense move
+        defense_move = Move.objects.create(
+            turn=current_turn,
+            table_card=table_card,
+            action_type='defend'
+        )
+    """
+    
+    ACTION_CHOICES = [
+        ('attack', 'Attack'),
+        ('defend', 'Defend'),
+        ('pickup', 'Pickup'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    turn = models.ForeignKey(Turn, on_delete=models.CASCADE, related_name='moves')
+    table_card = models.ForeignKey(TableCard, on_delete=models.CASCADE)
+    action_type = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        """Return string representation of the move.
+        
+        Returns:
+            str: Action type and card information.
+        """
+        return f"{self.action_type.title()} by {self.turn.player.username}: {self.table_card}"
+    
+    def get_player(self):
+        """Get the player who made this move.
+        
+        Returns:
+            User: The user associated with the turn that contains this move.
+        """
+        return self.turn.player
+    
+    def is_attack(self):
+        """Check if this move is an attack action.
+        
+        Returns:
+            bool: True if action_type is 'attack', False otherwise.
+        """
+        return self.action_type == 'attack'
+    
+    def is_defense(self):
+        """Check if this move is a defense action.
+        
+        Returns:
+            bool: True if action_type is 'defend', False otherwise.
+        """
+        return self.action_type == 'defend'
+    
+    def is_pickup(self):
+        """Check if this move is a pickup action.
+        
+        Returns:
+            bool: True if action_type is 'pickup', False otherwise.
+        """
+        return self.action_type == 'pickup'
+    
+    @classmethod
+    def get_game_moves(cls, game):
+        """Get all moves for a specific game ordered by time.
+        
+        Args:
+            game (Game): The game to get moves for.
+            
+        Returns:
+            QuerySet: Move objects for the game ordered by creation time.
+        """
+        return cls.objects.filter(turn__game=game).order_by('created_at')
+    
+    @classmethod
+    def get_player_moves(cls, game, player):
+        """Get all moves made by a specific player in a game.
+        
+        Args:
+            game (Game): The game to search in.
+            player (User): The player whose moves to retrieve.
+            
+        Returns:
+            QuerySet: Move objects made by the player in the game.
+        """
+        return cls.objects.filter(turn__game=game, turn__player=player).order_by('created_at')
+    
+    class Meta:
+        verbose_name = 'Move'
+        verbose_name_plural = 'Moves'
+        ordering = ['created_at']

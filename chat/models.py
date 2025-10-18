@@ -47,7 +47,8 @@ class Message(models.Model):
     sender = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='sent_messages')
     receiver = models.ForeignKey('accounts.User', on_delete=models.CASCADE, null=True, blank=True,
                                  related_name='received_messages')
-    lobby = models.ForeignKey('game.Lobby', on_delete=models.CASCADE, null=True, blank=True)
+    lobby = models.ForeignKey('game.Lobby', on_delete=models.CASCADE, null=True, blank=True, 
+                              related_name='messages')
     content = models.TextField()
     sent_at = models.DateTimeField(auto_now_add=True)
 
@@ -76,7 +77,86 @@ class Message(models.Model):
         """
         return self.lobby is not None
     
+    def get_chat_context(self):
+        """Get the context (lobby or private chat) for this message.
+        
+        Returns:
+            dict: Dictionary with context type and relevant object.
+        """
+        if self.lobby:
+            return {
+                'type': 'lobby',
+                'context': self.lobby,
+                'context_name': self.lobby.name
+            }
+        elif self.receiver:
+            return {
+                'type': 'private',
+                'context': self.receiver,
+                'context_name': f"Private chat with {self.receiver.username}"
+            }
+        return {'type': 'unknown', 'context': None, 'context_name': 'Unknown'}
+    
+    @classmethod
+    def get_lobby_messages(cls, lobby, limit=50):
+        """Get recent messages for a specific lobby.
+        
+        Args:
+            lobby (Lobby): The lobby to get messages for.
+            limit (int): Maximum number of messages to retrieve.
+            
+        Returns:
+            QuerySet: Recent messages in the lobby.
+        """
+        return cls.objects.filter(lobby=lobby).order_by('-sent_at')[:limit]
+    
+    @classmethod
+    def get_private_conversation(cls, user1, user2, limit=50):
+        """Get recent private messages between two users.
+        
+        Args:
+            user1 (User): First user in the conversation.
+            user2 (User): Second user in the conversation.
+            limit (int): Maximum number of messages to retrieve.
+            
+        Returns:
+            QuerySet: Recent messages between the users.
+        """
+        return cls.objects.filter(
+            models.Q(sender=user1, receiver=user2) | 
+            models.Q(sender=user2, receiver=user1),
+            lobby__isnull=True
+        ).order_by('-sent_at')[:limit]
+    
+    def clean(self):
+        """Validate that message has either lobby or receiver, but not both.
+        
+        Raises:
+            ValidationError: If both lobby and receiver are set, or if neither is set.
+        """
+        from django.core.exceptions import ValidationError
+        
+        if self.lobby and self.receiver:
+            raise ValidationError("Message cannot have both lobby and receiver.")
+        if not self.lobby and not self.receiver:
+            raise ValidationError("Message must have either lobby or receiver.")
+    
+    def save(self, *args, **kwargs):
+        """Override save to ensure message validation.
+        
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        """
+        self.clean()
+        super().save(*args, **kwargs)
+    
     class Meta:
-        ordering = ['-sent_at']
         verbose_name = 'Message'
         verbose_name_plural = 'Messages'
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['lobby', '-sent_at']),
+            models.Index(fields=['sender', 'receiver', '-sent_at']),
+            models.Index(fields=['-sent_at']),
+        ]
