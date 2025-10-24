@@ -9,6 +9,7 @@ from .forms import RegistrationForm, LoginForm
 
 @csrf_protect
 def register_view(request):
+    """Register a new user and log them in."""
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
@@ -21,6 +22,7 @@ def register_view(request):
 
 @csrf_protect
 def login_view(request):
+    """Authenticate and log in an existing user."""
     if request.method == 'POST':
         form = LoginForm(request, data=request.POST)
         if form.is_valid():
@@ -32,10 +34,12 @@ def login_view(request):
 
 @login_required
 def profile_view(request):
+    """Display the authenticated user's profile."""
     return render(request, 'accounts/profile.html')
 
 @csrf_protect
 def logout_view(request):
+    """Log out the current user."""
     if request.method == 'POST':
         auth_logout(request)
         return redirect('login')

@@ -3,6 +3,8 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 
 class RegistrationSerializer(serializers.ModelSerializer):
+    # Serializer for user registration
+    # Validates and creates a new user instance
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
@@ -10,6 +12,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
         fields = ('username', 'email', 'password')
 
     def create(self, validated_data):
+        # Creates a new user with encrypted password
         return User.objects.create_user(
             username=validated_data['username'],
             email=validated_data.get('email', ''),
@@ -17,10 +20,13 @@ class RegistrationSerializer(serializers.ModelSerializer):
         )
 
 class LoginSerializer(serializers.Serializer):
+    # Serializer for user login
+    # Authenticates user credentials
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
+        # Validates the provided username and password
         user = authenticate(username=attrs['username'], password=attrs['password'])
         if not user:
             raise serializers.ValidationError('Incorrect login details')
@@ -28,6 +34,7 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 class ProfileSerializer(serializers.ModelSerializer):
+    # Serializer for displaying user profile data
     class Meta:
         model = User
         fields = ('id', 'username', 'email')
