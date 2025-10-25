@@ -12,8 +12,6 @@ Example:
 
     # create 1 superuser
     python manage.py generate_test_users --count 1 --prefix admin --superuser --password adminpass
-
-Google style docstrings are used in the class and methods.
 """
 
 from django.core.management.base import BaseCommand
