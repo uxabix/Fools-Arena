@@ -272,14 +272,14 @@ class UserModelTest(TestCase):
             name="Closed Lobby",
             status='closed'
         )
-        
+
         # Create settings for the lobby
         LobbySettings.objects.create(
             lobby=lobby,
             max_players=4,
             card_count=36
         )
-        
+
         self.assertFalse(self.user.can_join_lobby(lobby))
 
     def test_leave_current_lobby_success(self):
