@@ -248,9 +248,12 @@ class LobbySettings(models.Model):
         """Check if the lobby has a turn time limit enabled.
         
         Returns:
-            bool: True if turn_time_limit is set, False otherwise.
+            bool: True if turn_time_limit is set or not equals 0, False otherwise.
         """
-        return self.turn_time_limit is not None
+        if self.turn_time_limit is None:
+            return False
+        else:
+            return self.turn_time_limit > 0
 
     def is_beginner_friendly(self):
         """Check if settings are suitable for beginner players.

@@ -41,14 +41,14 @@ docker-compose exec web python manage.py collectstatic
 ### 6. Work with Django
 All commands should be executed inside the web container. Examples:
 ```bash
-docker-compose exec web python manage.py shell
-docker-compose exec web python manage.py makemigrations
-docker-compose exec web python manage.py test
+docker compose exec web python manage.py shell
+docker compose exec web python manage.py makemigrations
+docker compose exec web pytest -v 
 ```
 
 ### 7. Stop containers
 ```bash
-docker-compose down
+docker compose down
 ```
 ---
 
