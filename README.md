@@ -26,16 +26,16 @@ Available services:
 ### 4. Apply migrations and create a superuser
 Run migrations:
 ```bash
-docker-compose exec web python manage.py migrate
+docker compose exec web python manage.py migrate
 ```
 Create a superuser (optional):
 ```bash
-docker-compose exec web python manage.py createsuperuser
+docker compose exec web python manage.py createsuperuser
 ```
 
 ### 5. Generate static files
 ```bash
-docker-compose exec web python manage.py collectstatic
+docker compose exec web python manage.py collectstatic
 ```
 
 ### 6. Work with Django
