@@ -1,12 +1,10 @@
 import os
 import gzip
-from typing import Optional, Set, List, Type
+from typing import Optional, Set, List
 from django.core.management.base import BaseCommand, CommandError
 from django.apps import apps
 from django.conf import settings
 from django.core import serializers
-from django.db import connection
-from django.db.utils import ProgrammingError, OperationalError
 
 EXCLUDE_MODEL_NAMES = {
     "ContentType",
@@ -35,14 +33,20 @@ def resolve_output_path(path: str) -> str:
 class Command(BaseCommand):
     """Export database rows to a JSON file (Django serialization) with optional apps filter.
 
-    The command streams model instances to a JSON array in chunks (to avoid
+    This command streams model instances to a JSON array in chunks (to avoid
     building one huge list in memory). Use ``--apps`` to limit exported objects
     to models that belong to a set of app labels (comma-separated). Use
     ``--indent N`` to pretty-print multi-line JSON.
 
-    The command is resilient: if a model's table does not exist in the database
-    (e.g. after code changes but before running migrations), it logs a warning
-    and continues exporting other models.
+    Example usage:
+        # Default: writes db_backups/backup.json under BASE_DIR
+        python manage.py export_db
+
+        # Pretty-printed, only export 'game' and 'auth' apps
+        python manage.py export_db --apps game,auth --indent 2
+
+        # Gzipped output inside project
+        python manage.py export_db -o db_backups/backup.json.gz --indent 2
     """
 
     help = "Export database rows to a JSON file (Django serialization). Supports --apps filter."
@@ -92,7 +96,14 @@ class Command(BaseCommand):
         )
 
     def _parse_apps_arg(self, apps_arg: Optional[str]) -> Optional[Set[str]]:
-        """Parse the --apps argument into a set of app labels."""
+        """Parse the --apps argument into a set of app labels.
+
+        Args:
+            apps_arg: Comma-separated app labels or None.
+
+        Returns:
+            A set of app labels if apps_arg provided, otherwise None.
+        """
         if not apps_arg:
             return None
         return {p.strip() for p in apps_arg.split(",") if p.strip()}
@@ -104,7 +115,7 @@ class Command(BaseCommand):
         1. Collect models to export (apply --apps and --exclude filters).
         2. Stream objects per-model and per-chunk, serializing each chunk and
            writing the inner JSON to the output file/stream.
-        3. If a model has no table, log and continue.
+        3. Produce pretty JSON when --indent is provided.
         """
         output = options["output"]
         apps_arg = options["apps"]
@@ -119,12 +130,14 @@ class Command(BaseCommand):
 
         # Collect models, applying app & exclude filters.
         all_models = list(apps.get_models())
-        models_to_export: List[Type] = []
+        models_to_export: List[type] = []
         for m in all_models:
             full_name = f"{m._meta.app_label}.{m.__name__}"
             if m.__name__ in EXCLUDE_MODEL_NAMES or full_name in exclude_set or m.__name__ in exclude_set:
+                # skip common internal models or anything explicitly excluded
                 continue
             if apps_filter is not None and m._meta.app_label not in apps_filter:
+                # skip models that are not in the requested apps
                 continue
             models_to_export.append(m)
 
@@ -164,65 +177,41 @@ class Command(BaseCommand):
 
             # Stream per model to limit memory usage
             for model in models_to_export:
-                # Attempt to iterate model objects; if table missing, log and continue.
-                try:
-                    qs_iter = model._default_manager.all().iterator()
-                except (ProgrammingError, OperationalError) as e:
-                    # Table might not exist — log and continue with next model.
-                    self.stderr.write(self.style.WARNING(
-                        f"Skipping model {model._meta.label}: DB error when creating queryset: {e}"
-                    ))
-                    # Close connection to reset any partially-open cursor
-                    try:
-                        connection.close()
-                    except Exception:
-                        pass
-                    continue
-
+                qs = model._default_manager.all().iterator()
                 chunk: List[object] = []
-                try:
-                    for obj in qs_iter:
-                        chunk.append(obj)
-                        if len(chunk) >= chunk_size:
-                            serialized = serializers.serialize(
-                                "json",
-                                chunk,
-                                indent=indent,
-                                use_natural_foreign_keys=use_nat_foreign,
-                                use_natural_primary_keys=use_nat_primary,
-                            )
-                            start = serialized.find('[')
-                            end = serialized.rfind(']')
-                            inner = serialized[start+1:end]
+                for obj in qs:
+                    chunk.append(obj)
+                    if len(chunk) >= chunk_size:
+                        serialized = serializers.serialize(
+                            "json",
+                            chunk,
+                            indent=indent,
+                            use_natural_foreign_keys=use_nat_foreign,
+                            use_natural_primary_keys=use_nat_primary,
+                        )
+                        # Extract the JSON inner array content (strip leading/trailing [ ])
+                        start = serialized.find('[')
+                        end = serialized.rfind(']')
+                        inner = serialized[start+1:end]
 
-                            if indent is not None:
-                                inner = inner.lstrip('\n').rstrip('\n')
-                                if inner:
-                                    if not first_piece:
-                                        write_chunk(separator)
-                                    write_chunk(inner)
-                                    first_piece = False
-                            else:
-                                inner = inner.strip()
-                                if inner:
-                                    if not first_piece:
-                                        write_chunk(separator)
-                                    write_chunk(inner)
-                                    first_piece = False
+                        if indent is not None:
+                            # Trim surrounding newlines for nicer concatenation
+                            inner = inner.lstrip('\n').rstrip('\n')
+                            if inner:
+                                if not first_piece:
+                                    write_chunk(separator)
+                                write_chunk(inner)
+                                first_piece = False
+                        else:
+                            inner = inner.strip()
+                            if inner:
+                                if not first_piece:
+                                    write_chunk(separator)
+                                write_chunk(inner)
+                                first_piece = False
 
-                            total_objects += len(chunk)
-                            chunk = []
-                except (ProgrammingError, OperationalError) as e:
-                    # Something happened mid-iteration (e.g. table dropped). Log and reset connection.
-                    self.stderr.write(self.style.WARNING(
-                        f"Error iterating model {model._meta.label}: {e} — skipping remaining rows of this model."
-                    ))
-                    try:
-                        connection.close()
-                    except Exception:
-                        pass
-                    # continue to next model
-                    continue
+                        total_objects += len(chunk)
+                        chunk = []
 
                 # Flush any remaining objects for this model
                 if chunk:
