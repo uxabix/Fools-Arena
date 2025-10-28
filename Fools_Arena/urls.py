@@ -16,6 +16,10 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.conf import settings
+from django.conf.urls.static import static
+from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.urls import path, include
 
 urlpatterns = [
@@ -27,3 +31,7 @@ urlpatterns = [
     path('api/', include('accounts.api_urls')),
 
 ]
+
+# Add static files
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
