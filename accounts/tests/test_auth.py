@@ -2,7 +2,6 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
-
 User = get_user_model()
 
 
@@ -31,11 +30,11 @@ class TestTemplateAuth:
         assert resp.status_code == 200
         assert not User.objects.filter(username='bad').exists()
 
-    def test_login_valid(self, client):
-        User.objects.create_user('u', 'u@example.com', 'p@55word!')
+    def test_login_valid(self, client, user_factory):
+        user = user_factory(password="test123")
         resp = client.post(reverse('login'), {
-            'username': 'u',
-            'password': 'p@55word!'
+            'username': user.username,
+            'password': 'test123',
         })
         assert resp.status_code == 302
         assert resp.url == reverse('profile')
@@ -52,9 +51,9 @@ class TestTemplateAuth:
         assert resp.status_code == 302
         assert reverse('login') in resp.url
 
-    def test_logout(self, client):
-        User.objects.create_user('u', 'u@example.com', 'p@55word!')
-        client.post(reverse('login'), {'username': 'u', 'password': 'p@55word!'})
+    def test_logout(self, client, user_factory):
+        user = user_factory(password="test123")
+        client.post(reverse('login'), {'username': user.username, 'password': 'test123'})
         resp = client.post(reverse('logout'))
         assert resp.status_code == 302
         assert resp.url == reverse('login')
@@ -64,12 +63,9 @@ class TestTemplateAuth:
 class TestAPIAuth:
     """API authentication endpoint tests."""
 
-    @pytest.fixture
-    def api_client(self):
-        return APIClient()
-
     def test_api_register_valid(self, api_client):
-        resp = api_client.post('/api/auth/register/', {
+        register_url = reverse("api_register")
+        resp = api_client.post(register_url, {
             'username': 'maksim_api',
             'email': 'mapi@example.com',
             'password': 'StrongPass123',
@@ -78,48 +74,56 @@ class TestAPIAuth:
         assert User.objects.filter(username='maksim_api').exists()
 
     def test_api_register_invalid(self, api_client):
-        resp = api_client.post('/api/auth/register/', {
+        register_url = reverse("api_register")
+        resp = api_client.post(register_url, {
             'username': '',
             'email': 'bad',
             'password': 'short',
         }, format='json')
         assert resp.status_code == 400
 
-    def test_api_login_valid(self, api_client):
-        User.objects.create_user('uapi', 'uapi@example.com', 'p@55word!')
-        resp = api_client.post('/api/auth/login/', {
-            'username': 'uapi',
-            'password': 'p@55word!'
+    def test_api_login_valid(self, api_client, user_factory):
+        user = user_factory(password="test123")
+        url = reverse("api_login")
+        resp = api_client.post(url, {
+            'username': user.username,
+            'password': 'test123'
         }, format='json')
         assert resp.status_code == 200
-        assert resp.data['username'] == 'uapi'
+        assert resp.data['username'] == user.username
 
     def test_api_login_invalid(self, api_client):
-        resp = api_client.post('/api/auth/login/', {
+        url = reverse("api_login")
+        resp = api_client.post(url, {
             'username': 'nope',
             'password': 'wrong'
         }, format='json')
         assert resp.status_code == 400
 
-    def test_api_profile_authenticated(self, api_client):
-        User.objects.create_user('uapi', 'uapi@example.com', 'p@55word!')
-        api_client.post('/api/auth/login/', {
-            'username': 'uapi',
-            'password': 'p@55word!'
+    def test_api_profile_authenticated(self, api_client, user_factory):
+        login_url = reverse("api_login")
+        user = user_factory(password="test123")
+        api_client.post(login_url, {
+            'username': user.username,
+            'password': 'test123'
         }, format='json')
-        resp = api_client.get('/api/auth/profile/')
+        profile_url = reverse("api_profile")
+        resp = api_client.get(profile_url)
         assert resp.status_code == 200
-        assert resp.data['username'] == 'uapi'
+        assert resp.data['username'] == user.username
 
     def test_api_profile_unauthenticated(self, api_client):
-        resp = api_client.get('/api/auth/profile/')
+        profile_url = reverse("api_profile")
+        resp = api_client.get(profile_url)
         assert resp.status_code == 403
 
-    def test_api_logout(self, api_client):
-        User.objects.create_user('uapi', 'uapi@example.com', 'p@55word!')
-        api_client.post('/api/auth/login/', {
-            'username': 'uapi',
-            'password': 'p@55word!'
+    def test_api_logout(self, api_client, user_factory):
+        login_url = reverse("api_login")
+        user = user_factory(password="test123")
+        api_client.post(login_url, {
+            'username': user.username,
+            'password': 'test123'
         }, format='json')
-        resp = api_client.post('/api/auth/logout/')
+        logout_url = reverse("api_logout")
+        resp = api_client.post(logout_url)
         assert resp.status_code == 200

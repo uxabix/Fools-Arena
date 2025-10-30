@@ -5,12 +5,28 @@ from rest_framework.views import APIView
 from .serializers import RegistrationSerializer, LoginSerializer, ProfileSerializer
 
 class RegistrationAPI(generics.CreateAPIView):
-    """API endpoint for user registration."""
+    """
+    API endpoint for user registration.
+
+    This view handles the creation of a new user account.
+    It uses the RegistrationSerializer to validate and save
+    the incoming data. Once the user is successfully created,
+    they are automatically logged in so that the client
+    immediately receives an authenticated session.
+    """
     serializer_class = RegistrationSerializer
     permission_classes = [permissions.AllowAny]
 
     def perform_create(self, serializer):
-        """Create a new user and log them in automatically."""
+        """
+        Save the new user instance and log them in.
+
+        This method overrides the default behavior of CreateAPIView.
+        After the serializer successfully saves the user, we call
+        Django's built-in auth_login to attach the user to the current
+        session. This ensures that the client does not need to perform
+        a separate login request right after registration.
+        """
         user = serializer.save()
         auth_login(self.request, user)
 

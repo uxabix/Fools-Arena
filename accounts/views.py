@@ -1,10 +1,8 @@
-from django.shortcuts import render
-
-# Create your views here.
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.views.decorators.csrf import csrf_protect
+
 from .forms import RegistrationForm, LoginForm
 
 @csrf_protect
