@@ -37,7 +37,7 @@ class TestTemplateAuth:
         assert User.objects.filter(username='maksim').exists()
 
     def test_register_invalid_password_mismatch(self, client):
-         """Test registration with mismatched passwords.
+        """Test registration with mismatched passwords.
 
         Ensures that invalid password confirmation prevents user creation
         and that the registration form is re-rendered with status 200.
