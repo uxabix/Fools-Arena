@@ -1,6 +1,3 @@
-from django.urls import path
-from .api_views import RegistrationAPI, LoginAPI, ProfileAPI, LogoutAPI
-
 """
 Authentication API routes for the Accounts app.
 
@@ -13,9 +10,14 @@ the final URLs are:
     /api/accounts/auth/login/      → Log in an existing user
     /api/accounts/auth/profile/    → Retrieve the authenticated user's profile
     /api/accounts/auth/logout/     → Log out the current user
-    
+
 Each path is mapped to a class-based API view defined in accounts/api_views.py.
 """
+
+from django.urls import path
+from .api_views import RegistrationAPI, LoginAPI, ProfileAPI, LogoutAPI
+
+
 urlpatterns = [
     path('auth/register/', RegistrationAPI.as_view(), name='api_register'),
     path('auth/login/', LoginAPI.as_view(), name='api_login'),
