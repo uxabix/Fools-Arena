@@ -29,6 +29,7 @@ import django
 django.setup()
 
 from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
 from game.models import (
     CardSuit, CardRank, Card, Lobby, LobbySettings,
     Game, GamePlayer, SpecialCard, SpecialRuleSet
@@ -357,3 +358,8 @@ def basic_rule_set(db):
         description="Simple special cards for new players",
         min_players=2
     )
+
+@pytest.fixture
+def api_client():
+    """DRF APIClient for API-tests."""
+    return APIClient()
