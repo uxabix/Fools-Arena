@@ -1,170 +1,179 @@
-# game/management/commands/reset_games.py
-from __future__ import annotations
-
 """
-Django management command to remove active/unfinished Game sessions and related data.
+Initialize default card suits, ranks and create Card entries.
 
-This command is intended to clean up "in-progress" / partially-complete game data
-from the database (for example after testing, during QA, or when resetting state).
+This management command will create standard card suits and ranks and then
+create Card objects for each suit × rank combination for a chosen deck size.
 
-Behavior
---------
-- By default the command does a dry-run and prints how many Game objects would be affected
-  and shows their IDs and related Lobby names.
-- To actually delete, pass --confirm.
-- You can also limit deletion to specific game UUIDs via --game-ids (comma-separated).
-- Deletion removes game-specific related objects:
-    GameDeck, PlayerHand, TableCard, DiscardPile, Move, Turn, GamePlayer
-  and finally the Game row itself. Deletion is performed inside a transaction.
+Usage:
+    python manage.py init_game_data
+    python manage.py init_game_data --deck-size 36
+    python manage.py init_game_data --reset
 
-Notes
------
-- The command identifies "unfinished / active" games as those where either:
-    * status != 'finished'
-    OR
-    * finished_at IS NULL
-  (This is intentionally broad to catch any games that haven't been properly finished.)
-- Lobbies are not deleted by default. If you want the lobbies removed as well, run the
-  separate `generate_fake_games --reset` (or tell me and I can add a --remove-lobbies flag).
+The command is idempotent by default (it uses get_or_create and updates mismatched
+names/colors). Using --reset will delete existing Card, CardRank and CardSuit
+records before recreating them.
+
+Module contents:
+    Command -- Django management command class implementing the behavior.
 """
 
-from typing import List, Optional
-import textwrap
+from typing import List, Tuple
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 
-from game.models import (
-    Game, GameDeck, PlayerHand, TableCard, DiscardPile,
-    Move, Turn, GamePlayer
-)
+from game.models import CardSuit, CardRank, Card
 
 
 class Command(BaseCommand):
-    """Remove active or unfinished games and related data."""
+    """
+    Django management command to initialize card suits, ranks and cards.
 
-    help = "Remove active/unfinished Game rows and their related game-specific data."
+    The command supports 24-, 36- and 52-card decks and an optional reset flag
+    which deletes existing Card, CardRank and CardSuit records before creating
+    new ones.
+
+    Attributes:
+        help (str): Short description displayed by `manage.py help`.
+    """
+
+    help = "Initialize default card suits, ranks and create Card entries. Default deck: 36 (Durak)."
 
     def add_arguments(self, parser):
-        """Add command arguments."""
+        """
+        Add command-line arguments for the management command.
+
+        Args:
+            parser (argparse.ArgumentParser): The argument parser instance.
+
+        Recognized flags:
+            --deck-size {24,36,52}: Which deck to create (default 52).
+            --reset: If present, deletes existing Card/Rank/Suit rows before creating.
+        """
         parser.add_argument(
-            "--confirm",
-            action="store_true",
-            default=False,
-            help="Actually perform deletion. Without this flag the command will only show a dry-run report."
+            "--deck-size",
+            type=int,
+            choices=[24, 36, 52],
+            default=52,
+            help="Which deck to create cards for: 24 (9-A), 36 (6-A), 52 (2-A). Default: 52.",
         )
         parser.add_argument(
-            "--game-ids",
-            type=str,
-            default=None,
-            help=(
-                "Optional comma-separated list of Game UUIDs to restrict deletions to. "
-                "If omitted, all active/unfinished games are targeted."
-            )
-        )
-        parser.add_argument(
-            "--verbose",
+            "--reset",
             action="store_true",
-            default=False,
-            help="Print verbose information about each game that will be (or was) deleted."
+            help="Delete existing Card, CardRank and CardSuit records and recreate from scratch.",
         )
 
     def handle(self, *args, **options):
         """
-        Entry point for the management command.
+        Main entry point for the management command.
 
-        Steps:
-        1. Construct a queryset of games considered 'active' or 'unfinished'.
-        2. If --game-ids provided, restrict to those UUIDs.
-        3. Report a dry-run summary unless --confirm is present.
-        4. If --confirm, delete related objects and the Game rows within a transaction.
+        This method creates suits and ranks (using get_or_create so it is safe to
+        run repeatedly), then creates Card objects for each combination of suit
+        and rank. If --reset is passed, existing Card, CardRank and CardSuit
+        records will be deleted first.
+
+        Args:
+            *args: Positional arguments (unused).
+            **options: Command options dictionary with keys:
+                deck_size (int): Deck size to create (24, 36, 52).
+                reset (bool): Whether to delete existing entries first.
+
+        Raises:
+            ValueError: If an unsupported deck size is provided (shouldn't happen
+                because argparse restricts choices).
         """
-        confirm: bool = options["confirm"]
-        game_ids_raw: Optional[str] = options["game_ids"]
-        verbose: bool = options["verbose"]
+        deck_size = options["deck_size"]
+        do_reset = options["reset"]
 
-        # Identify unfinished/active games:
-        # - status != 'finished' OR finished_at is NULL
-        queryset = Game.objects.filter(Q(finished_at__isnull=True) | ~Q(status="finished"))
+        # Standard four suits with their display colors.
+        suits = [
+            ("Hearts", "red"),
+            ("Diamonds", "red"),
+            ("Clubs", "black"),
+            ("Spades", "black"),
+        ]
 
-        if game_ids_raw:
-            # parse comma-separated uuids and filter
-            ids = [s.strip() for s in game_ids_raw.split(",") if s.strip()]
-            if not ids:
-                self.stdout.write(self.style.ERROR("No valid game IDs parsed from --game-ids. Aborting."))
-                return
-            queryset = queryset.filter(id__in=ids)
+        def ranks_for_deck(size: int) -> List[Tuple[str, int]]:
+            """
+            Return a list of (name, value) tuples representing card ranks for the given deck size.
 
-        total = queryset.count()
-        if total == 0:
-            self.stdout.write(self.style.NOTICE("No active or unfinished games found. Nothing to do."))
-            return
+            The returned list orders ranks from lowest to highest numeric value.
 
-        # Dry-run info
-        self.stdout.write(self.style.WARNING(
-            textwrap.dedent(
-                f"""
-                Found {total} active/unfinished game(s) that match the criteria.
-                To actually delete these games and their related data, re-run with --confirm.
-                """
-            ).strip()
-        ))
+            Args:
+                size (int): Deck size. Supported values: 24, 36, 52.
 
-        # show brief list (and verbose details when requested)
-        games_list = list(queryset.values("id", "lobby__name", "status", "finished_at")[:200])
-        # show up to 200 items to avoid spamming console for massive deletions
-        for g in games_list:
-            self.stdout.write(f"- Game {g['id']}  lobby='{g['lobby__name']}'  status='{g['status']}'  finished_at={g['finished_at']}")
+            Returns:
+                List[Tuple[str, int]]: List of (display_name, numeric_value) for ranks.
 
-        if total > len(games_list):
-            self.stdout.write(self.style.NOTICE(f"... (only first {len(games_list)} shown)"))
+            Raises:
+                ValueError: If an unsupported deck size is supplied.
+            """
+            face = [("Jack", 11), ("Queen", 12), ("King", 13), ("Ace", 14)]
+            if size == 52:
+                # 2..10 plus face cards
+                numeric = [(str(i), i) for i in range(2, 11)]
+                return numeric + face
+            if size == 36:
+                # 6..10 plus face cards (typical Durak deck)
+                numeric = [(str(i), i) for i in range(6, 11)]
+                return numeric + face
+            if size == 24:
+                # 9..10 plus face cards (short deck)
+                numeric = [("9", 9), ("10", 10)]
+                return numeric + face
+            raise ValueError("Unsupported deck size")
 
-        if not confirm:
-            self.stdout.write(self.style.NOTICE("Dry run complete. No rows were deleted. Use --confirm to proceed."))
-            return
+        ranks = ranks_for_deck(deck_size)
 
-        # Perform deletion inside a single transaction for safety
-        deleted_games = []
         with transaction.atomic():
-            # Iterate games to ensure we delete related rows in safe order and can report progress
-            for game in queryset.select_related("lobby").all():
-                if verbose:
-                    self.stdout.write(f"Deleting related objects for game {game.id} (lobby='{getattr(game.lobby, 'name', None)}')...")
+            if do_reset:
+                self.stdout.write("Reset requested — deleting existing Cards, CardRank and CardSuit entries...")
+                # Delete Cards first because of foreign key references to ranks & suits
+                Card.objects.all().delete()
+                CardRank.objects.all().delete()
+                CardSuit.objects.all().delete()
+                self.stdout.write("Existing card data deleted.")
 
-                # Delete moves (which reference turns) first
-                moves_deleted = Move.objects.filter(turn__game=game).delete()
-                if verbose:
-                    self.stdout.write(f"  - Moves deleted: {moves_deleted[0]}")
+            # Create or update suits
+            created_suits = []
+            for name, color in suits:
+                suit_obj, created = CardSuit.objects.get_or_create(name=name, defaults={"color": color})
+                # If suit exists but has a different color, update it to our canonical color.
+                if not created and getattr(suit_obj, "color", None) != color:
+                    suit_obj.color = color
+                    suit_obj.save(update_fields=["color"])
+                created_suits.append(suit_obj)
+                self.stdout.write(f"{'Created' if created else 'Found'} suit: {suit_obj.name} ({suit_obj.color})")
 
-                # Delete turns
-                turns_deleted = Turn.objects.filter(game=game).delete()
-                if verbose:
-                    self.stdout.write(f"  - Turns deleted: {turns_deleted[0]}")
+            # Create or update ranks
+            created_ranks = []
+            for name, value in ranks:
+                rank_obj, created = CardRank.objects.get_or_create(value=value, defaults={"name": name})
+                # Normalize the printable name if it differs from our desired name.
+                if not created and getattr(rank_obj, "name", None) != name:
+                    rank_obj.name = name
+                    rank_obj.save(update_fields=["name"])
+                created_ranks.append(rank_obj)
+                self.stdout.write(f"{'Created' if created else 'Found'} rank: {rank_obj.name} (value={rank_obj.value})")
 
-                # Delete table cards and discard piles
-                tablecards_deleted = TableCard.objects.filter(game=game).delete()
-                discards_deleted = DiscardPile.objects.filter(game=game).delete()
-                if verbose:
-                    self.stdout.write(f"  - TableCard deleted: {tablecards_deleted[0]}, DiscardPile deleted: {discards_deleted[0]}")
+            # Create cards for every suit × rank (skip cards that already exist)
+            created_cards = 0
+            skipped_cards = 0
+            for suit in created_suits:
+                for rank in created_ranks:
+                    # If a Card with the suit & rank already exists (and is not a special card),
+                    # skip creating a duplicate.
+                    card_qs = Card.objects.filter(suit=suit, rank=rank, special_card__isnull=True)
+                    if card_qs.exists():
+                        skipped_cards += 1
+                        continue
+                    Card.objects.create(suit=suit, rank=rank)
+                    created_cards += 1
 
-                # Delete player hands and deck entries
-                ph_deleted = PlayerHand.objects.filter(game=game).delete()
-                deck_deleted = GameDeck.objects.filter(game=game).delete()
-                if verbose:
-                    self.stdout.write(f"  - PlayerHand deleted: {ph_deleted[0]}, GameDeck deleted: {deck_deleted[0]}")
-
-                # Delete game player rows
-                gp_deleted = GamePlayer.objects.filter(game=game).delete()
-                if verbose:
-                    self.stdout.write(f"  - GamePlayer deleted: {gp_deleted[0]}")
-
-                # Finally delete the game row itself
-                game_id = str(game.id)
-                game.delete()
-                deleted_games.append(game_id)
-                self.stdout.write(self.style.SUCCESS(f"Deleted Game {game_id} and related objects."))
-
-        # finished
-        self.stdout.write(self.style.SUCCESS(f"Deletion complete. Removed {len(deleted_games)} game(s): {deleted_games}"))
+            # Summary output
+            self.stdout.write(self.style.SUCCESS(
+                f"Deck initialization finished for deck_size={deck_size}."
+            ))
+            self.stdout.write(f"Cards created: {created_cards}. Cards already present: {skipped_cards}.")
+            self.stdout.write(
+                f"Total suits: {CardSuit.objects.count()}; ranks: {CardRank.objects.count()}; cards: {Card.objects.count()}")

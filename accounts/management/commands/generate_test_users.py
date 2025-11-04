@@ -1,30 +1,22 @@
 """
-Create test users for development/testing and optionally delete all users
-belonging to the marker group (default: Test_Users).
+Management command to create test users and delete users belonging to a
+special marker group (default: "Test_Users").
 
-This command has two modes:
+Functionality:
+- Creation mode (default): creates users with configurable parameters such as
+  count, prefix, start index, email domain, password, and flags (staff,
+  superuser, inactive). All created users are added to the marker group so they
+  can be safely deleted later.
+- Deletion mode (--delete flag): deletes all users who belong to the marker
+  group, excluding staff and superusers by default. Supports --dry-run for
+  previewing actions and --noinput for non-interactive deletion.
 
-* Creation (default): create users with --count, --prefix, --password, etc.
-  Created users are added to the marker group so they can be deleted safely later.
-
-* Deletion: pass --delete to delete all users who are members of the marker group.
-  Deletion excludes staff and superusers by default to avoid accidental removal.
-
-Examples:
-    # Create 5 users:
+Usage examples:
+    # Create 5 users with prefix dev_
     python manage.py generate_test_users --count 5 --prefix dev_ --password secret
 
-    # Dry-run create:
-    python manage.py generate_test_users --count 3 --prefix demo --dry-run
-
-    # Delete all users in Test_Users group (interactive confirmation)
-    python manage.py generate_test_users --delete
-
-    # Delete without prompt (careful!)
+    # Delete all users in the marker group without confirmation
     python manage.py generate_test_users --delete --noinput
-
-    # Preview deletions without performing them
-    python manage.py generate_test_users --delete --dry-run
 """
 from __future__ import annotations
 
@@ -40,20 +32,22 @@ from django.db import transaction
 User = get_user_model()
 
 
-def _random_suffix(length: int = 4) -> str:
-    """Generate a short random alphanumeric suffix.
-
-    Args:
-        length: Length of the suffix (default: 4).
-
-    Returns:
-        A random string composed of lowercase letters and digits.
-    """
-    chars = string.ascii_lowercase + string.digits
-    return "".join(random.choice(chars) for _ in range(length))
-
 
 class Command(BaseCommand):
+    @staticmethod
+    def _random_suffix(length: int = 4) -> str:
+        """Generate a short random alphanumeric suffix.
+
+        Args:
+            length: Length of the suffix (default: 4).
+
+        Returns:
+            A random string composed of lowercase letters and digits.
+        """
+        chars = string.ascii_lowercase + string.digits
+        return "".join(random.choice(chars) for _ in range(length))
+
+
     """Management command to create test users and delete marker-group users.
 
     Creation mode (default) creates test users and adds them to a marker group
@@ -163,7 +157,6 @@ class Command(BaseCommand):
 
         # Deletion mode: delete all users in marker group (excluding staff/superuser)
         if options.get("delete"):
-            # Ensure the group exists
             try:
                 group = Group.objects.get(name=marker_group_name)
             except Group.DoesNotExist:
@@ -172,10 +165,8 @@ class Command(BaseCommand):
                 ))
                 return
 
-            # Query users in the group
             qs = User.objects.filter(groups__name=marker_group_name)
 
-            # Exclude staff and superuser accounts for safety if model has those flags
             if hasattr(User, "is_staff"):
                 qs = qs.exclude(is_staff=True)
             if hasattr(User, "is_superuser"):
@@ -186,7 +177,6 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING("No non-staff/non-superuser users found in marker group."))
                 return
 
-            # List matched users
             self.stdout.write(self.style.WARNING(f"Matched users for deletion (group='{marker_group_name}'): {total}"))
             for u in qs:
                 parts = [f"username='{getattr(u, 'username', '<no-username>')}'"]
@@ -198,25 +188,22 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING("Dry run: no users were deleted."))
                 return
 
-            # Confirm unless noinput
             if not options.get("noinput"):
                 answer = input("Delete all listed users? This is irreversible. [y/N]: ")
                 if answer.lower() not in ("y", "yes"):
                     self.stdout.write(self.style.WARNING("Aborted by user."))
                     return
 
-            # Perform deletions
             deleted = 0
             failed = []
             try:
                 with transaction.atomic():
                     for u in qs:
                         try:
-                            u.delete()  # call delete() to respect signals/cascades
+                            u.delete()
                             deleted += 1
                         except Exception as exc:
                             failed.append((u, exc))
-                            # continue deleting others
                 self.stdout.write(self.style.SUCCESS(f"Deleted {deleted} users from group '{marker_group_name}'."))
                 if failed:
                     self.stdout.write(self.style.ERROR(f"{len(failed)} deletions failed:"))
@@ -225,9 +212,8 @@ class Command(BaseCommand):
             except Exception as exc_outer:
                 raise CommandError(f"Deletion transaction failed: {exc_outer}")
 
-            return  # done
+            return
 
-        # Creation mode: create users and add to marker group
         count: int = int(options.get("count", 1))
         prefix: str = options.get("prefix") or "testuser"
         start: int = int(options.get("start", 1))
@@ -240,7 +226,6 @@ class Command(BaseCommand):
 
         created: List[User] = []
 
-        # Ensure marker group exists (get_or_create is safe; use admin-created group if present)
         group_obj: Optional[Group] = None
         try:
             group_obj, _ = Group.objects.get_or_create(name=marker_group_name)
@@ -251,12 +236,11 @@ class Command(BaseCommand):
             username = self._make_username(prefix, i)
             email = self._email_for_username(username, email_domain)
 
-            # Handle existing username
             if User.objects.filter(username=username).exists():
                 if not force:
                     self.stdout.write(self.style.WARNING(f"Skipping existing username: {username}"))
                     continue
-                username = f"{username}_{_random_suffix()}"
+                username = f"{username}_{self._random_suffix()}"
                 email = self._email_for_username(username, email_domain)
                 self.stdout.write(self.style.NOTICE(f"Username existed; using fallback username: {username}"))
 
@@ -266,7 +250,6 @@ class Command(BaseCommand):
                 )
                 continue
 
-            # Create user
             if make_superuser:
                 user = User.objects.create_superuser(username=username, email=email,
                                                      password=password)  # type: ignore[attr-defined]
@@ -289,7 +272,6 @@ class Command(BaseCommand):
             except Exception:
                 pass
 
-            # Add to marker group if possible
             try:
                 if group_obj is not None and hasattr(user, "groups"):
                     user.groups.add(group_obj)

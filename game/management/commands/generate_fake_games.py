@@ -11,7 +11,6 @@ safe to delete later.
 Usage:
     python manage.py generate_fake_games --games 3 --players 4 --moves 30 --card-count 36
 """
-from __future__ import annotations
 
 import itertools
 import random
@@ -23,6 +22,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+from django.contrib.auth.models import Group
 from django.contrib.auth import get_user_model
 
 from game.models import (
@@ -97,15 +97,15 @@ class Command(BaseCommand):
             "--card-count",
             type=int,
             choices=[24, 36, 52],
-            default=36,
-            help="Deck size per lobby (24, 36, or 52). Default: 36",
+            default=52,
+            help="Deck size per lobby (24, 36, or 52). Default: 52",
         )
         parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducible runs")
         parser.add_argument(
             "--reset",
             action="store_true",
             default=False,
-            help="Delete generated lobbies/games (prefix 'Fake Lobby ') and fake users (prefix 'fake_user_')",
+            help="Delete generated lobbies/games and fake users (prefix 'fake_user_')",
         )
 
     def handle(self, *args, **options):
@@ -164,31 +164,62 @@ class Command(BaseCommand):
     # Helpers
     # ---------------------------------------------------------------------
     def _reset_generated_lobbies_and_users(self):
-        """Remove generated lobbies/games and fake users.
+        """Remove lobbies that contain any player who belongs to the Test_Users group,
+        then remove non-staff/non-superuser users who are members of that group.
 
-        Lobbies are identified by name prefix 'Fake Lobby '. Fake users are
-        identified by username prefix 'fake_user_'. Staff and superuser users
-        are excluded from user deletion if those fields exist.
+        Behavior:
+        - Find the Group named 'Test_Users'. If it doesn't exist, nothing to delete.
+        - Find all users in that group.
+        - Find all Lobby objects that have a LobbyPlayer referencing any of those users,
+          and delete those lobbies (and their related game rows).
+        - Delete users in the group, excluding staff and superusers if those flags exist.
         """
         with transaction.atomic():
-            lobby_qs = Lobby.objects.filter(name__startswith="Fake Lobby ")
-            deleted_count, details = lobby_qs.delete()
-            self.stdout.write(
-                self.style.WARNING(f"Reset requested: deleted {deleted_count} objects (details: {details})."))
-
+            # Resolve the marker group
             try:
-                fake_user_qs = User.objects.filter(username__startswith="fake_user_").exclude(is_staff=True).exclude(
-                    is_superuser=True)
-            except Exception:
-                fake_user_qs = User.objects.filter(username__startswith="fake_user_")
+                marker_group = Group.objects.get(name="Test_Users")
+            except Group.DoesNotExist:
+                self.stdout.write(self.style.NOTICE("Group 'Test_Users' does not exist. Nothing to reset."))
+                return
 
-            fake_user_count = fake_user_qs.count()
-            if fake_user_count:
-                u_deleted_count, u_deleted_details = fake_user_qs.delete()
-                self.stdout.write(
-                    self.style.WARNING(f"Deleted {fake_user_count} fake user(s) (deleted objects: {u_deleted_count})."))
+            # All users who are members of the marker group
+            users_in_group = User.objects.filter(groups=marker_group)
+
+            total_users = users_in_group.count()
+            if total_users == 0:
+                self.stdout.write(self.style.NOTICE("No users found in group 'Test_Users'. Nothing to reset."))
+                return
+
+            # Find lobby IDs that have at least one LobbyPlayer who is in that group
+            lobby_ids_qs = LobbyPlayer.objects.filter(user__in=users_in_group).values_list("lobby_id",
+                                                                                           flat=True).distinct()
+            lobby_ids = list(lobby_ids_qs)
+
+            if lobby_ids:
+                lobby_qs = Lobby.objects.filter(id__in=lobby_ids)
+                deleted_count, details = lobby_qs.delete()
+                self.stdout.write(self.style.WARNING(
+                    f"Deleted {deleted_count} objects belonging to {len(lobby_ids)} lobby(ies) that had Test_Users members (details: {details})."
+                ))
             else:
-                self.stdout.write(self.style.NOTICE("No fake users found to delete."))
+                self.stdout.write(self.style.NOTICE("No lobbies found that contain users from group 'Test_Users'."))
+
+            # Now delete non-staff, non-superuser users who belong to the marker group
+            users_to_delete = users_in_group
+            if hasattr(User, "is_staff"):
+                users_to_delete = users_to_delete.exclude(is_staff=True)
+            if hasattr(User, "is_superuser"):
+                users_to_delete = users_to_delete.exclude(is_superuser=True)
+
+            count_to_delete = users_to_delete.count()
+            if count_to_delete:
+                u_deleted_count, u_deleted_details = users_to_delete.delete()
+                self.stdout.write(self.style.WARNING(
+                    f"Deleted {count_to_delete} user(s) from group 'Test_Users' (deleted objects: {u_deleted_count})."
+                ))
+            else:
+                self.stdout.write(
+                    self.style.NOTICE("No non-staff/non-superuser users in group 'Test_Users' to delete."))
 
     def _ensure_suits_and_ranks(self, card_count: int):
         """Ensure CardSuit and CardRank rows exist.
@@ -295,7 +326,7 @@ class Command(BaseCommand):
                 try:
                     user = User.objects.create_user(username=username, password="testpass")
                 except Exception:
-                    # Try create without password method if custom user model differs
+                    #Try create without password method if custom user model differs
                     user = User.objects.create(username=username)
                 created_users.append(user)
             self.stdout.write(self.style.NOTICE(f"Fallback created {len(created_users)} users."))
@@ -332,8 +363,13 @@ class Command(BaseCommand):
             The created Game instance.
         """
         owner_user = next(user_iter)
-        lobby = Lobby.objects.create(owner=owner_user, name=f"Fake Lobby {uuid.uuid4().hex[:6]}", is_private=False,
-                                     status="playing")
+        # NOTE: lobby name no longer uses 'Fake Lobby' prefix to avoid relying on names for cleanup.
+        lobby = Lobby.objects.create(
+            owner=owner_user,
+            name=f"Generated Lobby {uuid.uuid4().hex[:6]}",
+            is_private=False,
+            status="playing",
+        )
 
         LobbySettings.objects.create(
             lobby=lobby,

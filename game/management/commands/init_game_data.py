@@ -17,9 +17,10 @@ Module contents:
     Command -- Django management command class implementing the behavior.
 """
 
+from typing import List, Tuple
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from typing import List, Tuple
 
 from game.models import CardSuit, CardRank, Card
 
@@ -35,6 +36,14 @@ class Command(BaseCommand):
     Attributes:
         help (str): Short description displayed by `manage.py help`.
     """
+
+    # Standard four suits with their display colors.
+    suits = [
+        ("Hearts", "red"),
+        ("Diamonds", "red"),
+        ("Clubs", "black"),
+        ("Spades", "black"),
+    ]
 
     help = "Initialize default card suits, ranks and create Card entries. Default deck: 36 (Durak)."
 
@@ -62,6 +71,81 @@ class Command(BaseCommand):
             help="Delete existing Card, CardRank and CardSuit records and recreate from scratch.",
         )
 
+    def ranks_for_deck(self, size: int) -> List[Tuple[str, int]]:
+        """
+        Return a list of (name, value) tuples representing card ranks for the given deck size.
+
+        The returned list orders ranks from lowest to highest numeric value.
+
+        Args:
+            size (int): Deck size. Supported values: 24, 36, 52.
+
+        Returns:
+            List[Tuple[str, int]]: List of (display_name, numeric_value) for ranks.
+
+        Raises:
+            ValueError: If an unsupported deck size is supplied.
+        """
+        face = [("Jack", 11), ("Queen", 12), ("King", 13), ("Ace", 14)]
+        if size == 52:
+            # 2..10 plus face cards
+            numeric = [(str(i), i) for i in range(2, 11)]
+            return numeric + face
+        if size == 36:
+            # 6..10 plus face cards (typical Durak deck)
+            numeric = [(str(i), i) for i in range(6, 11)]
+            return numeric + face
+        if size == 24:
+            # 9..10 plus face cards (short deck)
+            numeric = [("9", 9), ("10", 10)]
+            return numeric + face
+        raise ValueError("Unsupported deck size")
+
+    def create_suits(self):
+        # Create or update suits
+        created_suits = []
+        for name, color in self.suits:
+            suit_obj, created = CardSuit.objects.get_or_create(name=name, defaults={"color": color})
+            # If suit exists but has a different color, update it to our canonical color.
+            if not created and getattr(suit_obj, "color", None) != color:
+                suit_obj.color = color
+                suit_obj.save(update_fields=["color"])
+            created_suits.append(suit_obj)
+            self.stdout.write(f"{'Created' if created else 'Found'} suit: {suit_obj.name} ({suit_obj.color})")
+        return created_suits
+
+    def create_ranks(self, ranks: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
+        # Create or update ranks
+        created_ranks = []
+        for name, value in ranks:
+            rank_obj, created = CardRank.objects.get_or_create(value=value, defaults={"name": name})
+            # Normalize the printable name if it differs from our desired name.
+            if not created and getattr(rank_obj, "name", None) != name:
+                rank_obj.name = name
+                rank_obj.save(update_fields=["name"])
+            created_ranks.append(rank_obj)
+            self.stdout.write(f"{'Created' if created else 'Found'} rank: {rank_obj.name} (value={rank_obj.value})")
+        return created_ranks
+
+    def create_cards(self, ranks: List[Tuple[str, int]]):
+        # Create cards for every suit × rank (skip cards that already exist)
+        created_cards = 0
+        skipped_cards = 0
+        created_suits = self.create_suits()
+        created_ranks = self.create_ranks(ranks)
+        for suit in created_suits:
+            for rank in created_ranks:
+                # If a Card with the suit & rank already exists (and is not a special card),
+                # skip creating a duplicate.
+                card_qs = Card.objects.filter(suit=suit, rank=rank, special_card__isnull=True)
+                if card_qs.exists():
+                    skipped_cards += 1
+                    continue
+                Card.objects.create(suit=suit, rank=rank)
+                created_cards += 1
+
+        return created_cards, skipped_cards
+
     def handle(self, *args, **options):
         """
         Main entry point for the management command.
@@ -84,45 +168,7 @@ class Command(BaseCommand):
         deck_size = options["deck_size"]
         do_reset = options["reset"]
 
-        # Standard four suits with their display colors.
-        suits = [
-            ("Hearts", "red"),
-            ("Diamonds", "red"),
-            ("Clubs", "black"),
-            ("Spades", "black"),
-        ]
-
-        def ranks_for_deck(size: int) -> List[Tuple[str, int]]:
-            """
-            Return a list of (name, value) tuples representing card ranks for the given deck size.
-
-            The returned list orders ranks from lowest to highest numeric value.
-
-            Args:
-                size (int): Deck size. Supported values: 24, 36, 52.
-
-            Returns:
-                List[Tuple[str, int]]: List of (display_name, numeric_value) for ranks.
-
-            Raises:
-                ValueError: If an unsupported deck size is supplied.
-            """
-            face = [("Jack", 11), ("Queen", 12), ("King", 13), ("Ace", 14)]
-            if size == 52:
-                # 2..10 plus face cards
-                numeric = [(str(i), i) for i in range(2, 11)]
-                return numeric + face
-            if size == 36:
-                # 6..10 plus face cards (typical Durak deck)
-                numeric = [(str(i), i) for i in range(6, 11)]
-                return numeric + face
-            if size == 24:
-                # 9..10 plus face cards (short deck)
-                numeric = [("9", 9), ("10", 10)]
-                return numeric + face
-            raise ValueError("Unsupported deck size")
-
-        ranks = ranks_for_deck(deck_size)
+        ranks = self.ranks_for_deck(deck_size)
 
         with transaction.atomic():
             if do_reset:
@@ -133,41 +179,7 @@ class Command(BaseCommand):
                 CardSuit.objects.all().delete()
                 self.stdout.write("Existing card data deleted.")
 
-            # Create or update suits
-            created_suits = []
-            for name, color in suits:
-                suit_obj, created = CardSuit.objects.get_or_create(name=name, defaults={"color": color})
-                # If suit exists but has a different color, update it to our canonical color.
-                if not created and getattr(suit_obj, "color", None) != color:
-                    suit_obj.color = color
-                    suit_obj.save(update_fields=["color"])
-                created_suits.append(suit_obj)
-                self.stdout.write(f"{'Created' if created else 'Found'} suit: {suit_obj.name} ({suit_obj.color})")
-
-            # Create or update ranks
-            created_ranks = []
-            for name, value in ranks:
-                rank_obj, created = CardRank.objects.get_or_create(value=value, defaults={"name": name})
-                # Normalize the printable name if it differs from our desired name.
-                if not created and getattr(rank_obj, "name", None) != name:
-                    rank_obj.name = name
-                    rank_obj.save(update_fields=["name"])
-                created_ranks.append(rank_obj)
-                self.stdout.write(f"{'Created' if created else 'Found'} rank: {rank_obj.name} (value={rank_obj.value})")
-
-            # Create cards for every suit × rank (skip cards that already exist)
-            created_cards = 0
-            skipped_cards = 0
-            for suit in created_suits:
-                for rank in created_ranks:
-                    # If a Card with the suit & rank already exists (and is not a special card),
-                    # skip creating a duplicate.
-                    card_qs = Card.objects.filter(suit=suit, rank=rank, special_card__isnull=True)
-                    if card_qs.exists():
-                        skipped_cards += 1
-                        continue
-                    Card.objects.create(suit=suit, rank=rank)
-                    created_cards += 1
+            created_cards, skipped_cards = self.create_cards(ranks)
 
             # Summary output
             self.stdout.write(self.style.SUCCESS(
