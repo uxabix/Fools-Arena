@@ -98,7 +98,7 @@ def test_generate_test_users_force_and_conflict(user_factory):
 
     after_count = User.objects.filter(username__startswith=prefix).count()
     # Ensure count did not decrease and (ideally) increased by at least 1
-    assert after_count >= before_count
+    assert after_count > before_count
 
     # Ensure marker group exists and contains at least one user with the prefix
     group = Group.objects.filter(name=marker_group).first()

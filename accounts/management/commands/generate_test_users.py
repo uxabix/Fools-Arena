@@ -25,7 +25,7 @@ Examples:
     # Delete all users in Test_Users group without prompt
     python manage.py generate_test_users --delete --noinput
 """
-
+import argparse
 from typing import List, Optional
 from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
@@ -209,15 +209,7 @@ class Command(BaseCommand):
 
     def _handle_create(
         self,
-        count: int,
-        prefix: str,
-        start: int,
-        email_domain: str,
-        password: str,
-        make_staff: bool,
-        make_superuser: bool,
-        inactive: bool,
-        force: bool,
+        options,
         dry_run: bool,
         marker_group_name: str,
     ) -> None:
@@ -230,6 +222,16 @@ class Command(BaseCommand):
         - Prints a success message per created user and a final summary.
         """
         created: List[User] = []
+
+        count: int = int(options.get("count", 1))
+        prefix: str = options.get("prefix") or "testuser"
+        start: int = int(options.get("start", 1))
+        email_domain: str = options.get("email_domain") or "example.com"
+        password: str = options.get("password") or "test_password"
+        make_staff: bool = bool(options.get("staff"))
+        make_superuser: bool = bool(options.get("superuser"))
+        inactive: bool = bool(options.get("inactive"))
+        force: bool = bool(options.get("force"))
 
         group_obj: Optional[Group] = None
         try:
@@ -311,26 +313,10 @@ class Command(BaseCommand):
             return
 
         # Creation mode: collect options and delegate
-        count: int = int(options.get("count", 1))
-        prefix: str = options.get("prefix") or "testuser"
-        start: int = int(options.get("start", 1))
-        email_domain: str = options.get("email_domain") or "example.com"
-        password: str = options.get("password") or "test_password"
-        make_staff: bool = bool(options.get("staff"))
-        make_superuser: bool = bool(options.get("superuser"))
-        inactive: bool = bool(options.get("inactive"))
-        force: bool = bool(options.get("force"))
+
 
         self._handle_create(
-            count=count,
-            prefix=prefix,
-            start=start,
-            email_domain=email_domain,
-            password=password,
-            make_staff=make_staff,
-            make_superuser=make_superuser,
-            inactive=inactive,
-            force=force,
+            options=options,
             dry_run=dry_run,
             marker_group_name=marker_group_name,
         )
