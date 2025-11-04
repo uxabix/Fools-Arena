@@ -111,6 +111,7 @@ celerybeat.pid
 *.sql.gz
 *.dump
 *.backup
+backup*
 
 # =========================
 # Docker
