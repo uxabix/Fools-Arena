@@ -25,10 +25,10 @@ from django.urls import path, include
 urlpatterns = [
     path("admin/", admin.site.urls),
 # UI
-    path('accounts/', include('accounts.urls')),
-
+    path("accounts/", include("accounts.urls")),
+    path("chat/", include("chat.urls")),
     # API
-    path('api/accounts/', include('accounts.api_urls')),
+    path("api/accounts/", include("accounts.api_urls")),
 
 ]
 

@@ -1,0 +1,24 @@
+<div id="chat-log"></div>
+
+<form id="chat-form">
+  <input id="chat-message-input" type="text" size="100" placeholder="Enter your message..." autocomplete="off">
+  <button type="submit">Send</button>
+</form>
+
+<script>
+const chatSocket = new WebSocket(
+  'ws://' + window.location.host + '/ws/chat/lobby/'
+);
+
+chatSocket.onmessage = function(e) {
+  const data = JSON.parse(e.data);
+  document.querySelector('#chat-log').innerHTML += '<div>' + data.message + '</div>';
+};
+
+document.querySelector('#chat-form').onsubmit = function(e) {
+  e.preventDefault(); // Prevent from reloading the page
+  const input = document.querySelector('#chat-message-input');
+  chatSocket.send(JSON.stringify({ 'message': input.value }));
+  input.value = ''; // Clear the input field after sending a message
+};
+</script>
