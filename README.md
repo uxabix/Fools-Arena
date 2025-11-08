@@ -53,7 +53,8 @@ docker compose down
 ---
 
 ## 🚀 Stack
-- Django, REST, Channels  
+- Django, REST, Channels
+- Redis
 - PostgreSQL  
 - Docker  
 - GitFlow  

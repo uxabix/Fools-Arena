@@ -1,7 +1,7 @@
 services:
   web:
     build: .
-    command: gunicorn -k uvicorn.workers.UvicornWorker Fools_Arena.asgi:application --bind 0.0.0.0:8000
+    command: daphne -b 0.0.0.0 -p 8000 Fools_Arena.asgi:application
     volumes:
       - .:/app
     ports:
@@ -10,6 +10,11 @@ services:
       - .env
     depends_on:
       - db
+      - redis
+
+  redis:
+    image: redis:alpine
+    restart: always
 
   db:
     image: postgres:17
