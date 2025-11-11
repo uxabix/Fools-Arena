@@ -1207,12 +1207,12 @@ class Turn(models.Model):
         # Get the next turn number
         next_turn = Turn.objects.filter(game=game).count() + 1
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='turns')
     player = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
     turn_number = models.IntegerField()
-    
+
     def __str__(self):
         """Return string representation of the turn.
         
@@ -1220,7 +1220,7 @@ class Turn(models.Model):
             str: Turn number and player information.
         """
         return f"Turn {self.turn_number}: {self.player.username} in {self.game}"
-    
+
     def get_moves(self):
         """Get all moves made during this turn.
         
@@ -1228,7 +1228,7 @@ class Turn(models.Model):
             QuerySet: Move objects associated with this turn.
         """
         return self.moves.all().order_by('created_at')
-    
+
     def is_complete(self):
         """Check if this turn has been completed (has moves).
         
@@ -1236,7 +1236,7 @@ class Turn(models.Model):
             bool: True if turn has associated moves, False otherwise.
         """
         return self.moves.exists()
-    
+
     @classmethod
     def get_current_turn(cls, game):
         """Get the most recent turn for a game.
@@ -1248,7 +1248,7 @@ class Turn(models.Model):
             Turn: The turn with the highest turn_number, or None if no turns exist.
         """
         return cls.objects.filter(game=game).order_by('-turn_number').first()
-    
+
     @classmethod
     def create_next_turn(cls, game, player):
         """Create the next turn in sequence for a game.
@@ -1266,7 +1266,7 @@ class Turn(models.Model):
             player=player,
             turn_number=next_number
         )
-    
+
     class Meta:
         verbose_name = 'Turn'
         verbose_name_plural = 'Turns'
@@ -1308,19 +1308,19 @@ class Move(models.Model):
             action_type='defend'
         )
     """
-    
+
     ACTION_CHOICES = [
         ('attack', 'Attack'),
         ('defend', 'Defend'),
         ('pickup', 'Pickup'),
     ]
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     turn = models.ForeignKey(Turn, on_delete=models.CASCADE, related_name='moves')
     table_card = models.ForeignKey(TableCard, on_delete=models.CASCADE)
     action_type = models.CharField(max_length=10, choices=ACTION_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         """Return string representation of the move.
         
@@ -1328,7 +1328,7 @@ class Move(models.Model):
             str: Action type and card information.
         """
         return f"{self.action_type.title()} by {self.turn.player.username}: {self.table_card}"
-    
+
     def get_player(self):
         """Get the player who made this move.
         
@@ -1336,7 +1336,7 @@ class Move(models.Model):
             User: The user associated with the turn that contains this move.
         """
         return self.turn.player
-    
+
     def is_attack(self):
         """Check if this move is an attack action.
         
@@ -1344,7 +1344,7 @@ class Move(models.Model):
             bool: True if action_type is 'attack', False otherwise.
         """
         return self.action_type == 'attack'
-    
+
     def is_defense(self):
         """Check if this move is a defense action.
         
@@ -1352,7 +1352,7 @@ class Move(models.Model):
             bool: True if action_type is 'defend', False otherwise.
         """
         return self.action_type == 'defend'
-    
+
     def is_pickup(self):
         """Check if this move is a pickup action.
         
@@ -1360,7 +1360,7 @@ class Move(models.Model):
             bool: True if action_type is 'pickup', False otherwise.
         """
         return self.action_type == 'pickup'
-    
+
     @classmethod
     def get_game_moves(cls, game):
         """Get all moves for a specific game ordered by time.
@@ -1372,7 +1372,7 @@ class Move(models.Model):
             QuerySet: Move objects for the game ordered by creation time.
         """
         return cls.objects.filter(turn__game=game).order_by('created_at')
-    
+
     @classmethod
     def get_player_moves(cls, game, player):
         """Get all moves made by a specific player in a game.
@@ -1385,7 +1385,7 @@ class Move(models.Model):
             QuerySet: Move objects made by the player in the game.
         """
         return cls.objects.filter(turn__game=game, turn__player=player).order_by('created_at')
-    
+
     class Meta:
         verbose_name = 'Move'
         verbose_name_plural = 'Moves'
