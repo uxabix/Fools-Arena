@@ -1,90 +1,212 @@
-"""Tests for query methods on the Message model."""
+"""Tests for common query patterns on the Message model."""
 
 import pytest
-from chat.models import Message
+
+from chat.models import Chat, Message
 from game.models import Lobby
 
 
 @pytest.mark.django_db
 class TestMessageQueries:
-    """Test suite for class methods on Message that perform queries."""
+    """Test suite for typical query scenarios around Message objects."""
 
     @pytest.fixture(autouse=True)
     def set_up(self, test_user, second_user, basic_lobby):
-        """Sets up users and a lobby for the tests."""
+        """Prepare users, lobby, and base chats for the query tests.
+
+        Creates:
+            - user1, user2: Two distinct users.
+            - lobby: A lobby instance.
+            - lobby_chat: Group chat attached to the lobby.
+            - private_chat: Direct private chat between user1 and user2.
+        """
         self.user1 = test_user
         self.user2 = second_user
-        self.lobby = basic_lobby
+        self.lobby: Lobby = basic_lobby
+
+        self.lobby_chat = Chat.objects.create(
+            name="Lobby Chat",
+            is_group=True,
+            is_lobby=True,
+            lobby=self.lobby,
+        )
+        self.private_chat = Chat.objects.create(
+            name="Private Chat",
+            is_group=False,
+            is_lobby=False,
+        )
 
     def test_get_lobby_messages(self):
-        """Tests that get_lobby_messages() retrieves only relevant lobby messages."""
-        msg1 = Message.objects.create(sender=self.user1, lobby=self.lobby, content="1")
-        msg2 = Message.objects.create(sender=self.user2, lobby=self.lobby, content="2")
-        # Private message, should not be included
-        Message.objects.create(sender=self.user1, receiver=self.user2, content="private")
+        """Tests that lobby messages are retrieved only from the lobby chat.
 
-        messages = list(Message.get_lobby_messages(self.lobby))
+        Only messages attached to the lobby_chat should be returned and they
+        must be ordered by sent_at descending (newest first).
+        """
+        msg1 = Message.objects.create(
+            sender=self.user1,
+            chat=self.lobby_chat,
+            content="1",
+        )
+        msg2 = Message.objects.create(
+            sender=self.user2,
+            chat=self.lobby_chat,
+            content="2",
+        )
+        # Message in a different chat, should not be included
+        Message.objects.create(
+            sender=self.user1,
+            chat=self.private_chat,
+            content="private",
+        )
+
+        messages = list(
+            Message.objects.filter(chat=self.lobby_chat).order_by("-sent_at")
+        )
         assert len(messages) == 2
-        # Should be ordered by sent_at descending (newest first)
         assert messages[0] == msg2
         assert messages[1] == msg1
 
     def test_get_lobby_messages_limit(self):
-        """Tests that get_lobby_messages() respects the limit parameter."""
+        """Tests that limiting lobby messages via slice returns expected count."""
         for i in range(5):
             Message.objects.create(
-                sender=self.user1, lobby=self.lobby, content=f"Msg {i}"
+                sender=self.user1,
+                chat=self.lobby_chat,
+                content=f"Msg {i}",
             )
 
-        messages = list(Message.get_lobby_messages(self.lobby, limit=3))
+        messages = list(
+            Message.objects.filter(chat=self.lobby_chat)
+            .order_by("-sent_at")[:3]
+        )
         assert len(messages) == 3
 
     def test_get_lobby_messages_empty(self, lobby_factory):
-        """Tests get_lobby_messages() for a lobby with no messages."""
+        """Tests lobby chat with no messages returns an empty result."""
         empty_lobby = lobby_factory(owner=self.user1, name="Empty")
-        messages = list(Message.get_lobby_messages(empty_lobby))
+        empty_lobby_chat = Chat.objects.create(
+            name="Empty Lobby Chat",
+            is_group=True,
+            is_lobby=True,
+            lobby=empty_lobby,
+        )
+
+        messages = list(
+            Message.objects.filter(chat=empty_lobby_chat).order_by("-sent_at")
+        )
         assert len(messages) == 0
 
     def test_get_private_conversation(self, user_factory):
-        """Tests get_private_conversation() retrieves a full conversation."""
-        user3 = user_factory(username='user3')
-        # Conversation between user1 and user2
-        msg1 = Message.objects.create(sender=self.user1, receiver=self.user2, content="Hi")
-        msg2 = Message.objects.create(sender=self.user2, receiver=self.user1, content="Hello")
-        # Other messages that should be ignored
-        Message.objects.create(sender=self.user1, lobby=self.lobby, content="Lobby msg")
-        Message.objects.create(sender=self.user1, receiver=user3, content="To user3")
+        """Tests retrieving a private conversation within a dedicated chat.
 
-        messages = list(Message.get_private_conversation(self.user1, self.user2))
+        Only messages inside the given private chat between user1 and user2
+        should be returned; other chats or users must be ignored.
+        """
+        user3 = user_factory(username="user3")
+
+        # Conversation between user1 and user2 in the private_chat
+        msg1 = Message.objects.create(
+            sender=self.user1,
+            chat=self.private_chat,
+            content="Hi",
+        )
+        msg2 = Message.objects.create(
+            sender=self.user2,
+            chat=self.private_chat,
+            content="Hello",
+        )
+
+        # Other messages that should be ignored
+        other_private_chat = Chat.objects.create(
+            name="Other Private",
+            is_group=False,
+            is_lobby=False,
+        )
+        Message.objects.create(
+            sender=self.user1,
+            chat=self.lobby_chat,
+            content="Lobby msg",
+        )
+        Message.objects.create(
+            sender=self.user1,
+            chat=other_private_chat,
+            content="To user3",
+        )
+
+        messages = list(
+            Message.objects.filter(chat=self.private_chat).order_by("-sent_at")
+        )
         assert len(messages) == 2
         assert msg1 in messages
         assert msg2 in messages
 
     def test_get_private_conversation_order(self):
-        """Tests get_private_conversation() returns messages in descending order."""
-        msg1 = Message.objects.create(sender=self.user1, receiver=self.user2, content="First")
-        msg2 = Message.objects.create(sender=self.user2, receiver=self.user1, content="Second")
+        """Tests that private messages are ordered newest first inside a chat."""
+        msg1 = Message.objects.create(
+            sender=self.user1,
+            chat=self.private_chat,
+            content="First",
+        )
+        msg2 = Message.objects.create(
+            sender=self.user2,
+            chat=self.private_chat,
+            content="Second",
+        )
 
-        messages = list(Message.get_private_conversation(self.user1, self.user2))
+        messages = list(
+            Message.objects.filter(chat=self.private_chat).order_by("-sent_at")
+        )
         assert messages[0] == msg2
         assert messages[1] == msg1
 
     def test_get_private_conversation_limit(self):
-        """Tests get_private_conversation() respects the limit parameter."""
+        """Tests limiting private conversation size via slice."""
         for i in range(5):
             Message.objects.create(
-                sender=self.user1, receiver=self.user2, content=f"Msg {i}"
+                sender=self.user1,
+                chat=self.private_chat,
+                content=f"Msg {i}",
             )
 
-        messages = list(Message.get_private_conversation(self.user1, self.user2, limit=3))
+        messages = list(
+            Message.objects.filter(chat=self.private_chat)
+            .order_by("-sent_at")[:3]
+        )
         assert len(messages) == 3
 
-    def test_get_private_conversation_symmetry(self):
-        """Tests get_private_conversation() works regardless of parameter order."""
-        Message.objects.create(sender=self.user1, receiver=self.user2, content="Test")
+    def test_private_conversation_is_chat_specific(self):
+        """Tests that private conversation is isolated per chat instance.
 
-        messages1 = list(Message.get_private_conversation(self.user1, self.user2))
-        messages2 = list(Message.get_private_conversation(self.user2, self.user1))
+        Messages from another private chat between the same users should not
+        appear when querying by the original chat.
+        """
+        # Messages in the original private_chat
+        Message.objects.create(
+            sender=self.user1,
+            chat=self.private_chat,
+            content="Original chat",
+        )
 
-        assert len(messages1) == 1
-        assert messages1 == messages2
+        # Same users, but another chat
+        another_private_chat = Chat.objects.create(
+            name="Another Private Chat",
+            is_group=False,
+            is_lobby=False,
+        )
+        Message.objects.create(
+            sender=self.user1,
+            chat=another_private_chat,
+            content="Another chat message",
+        )
+
+        messages_original = list(
+            Message.objects.filter(chat=self.private_chat).order_by("-sent_at")
+        )
+        messages_other = list(
+            Message.objects.filter(chat=another_private_chat).order_by("-sent_at")
+        )
+
+        assert len(messages_original) == 1
+        assert len(messages_other) == 1
+        assert messages_original[0].chat == self.private_chat
+        assert messages_other[0].chat == another_private_chat

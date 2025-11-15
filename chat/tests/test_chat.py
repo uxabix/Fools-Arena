@@ -60,11 +60,13 @@ class TestChatModel:
 
         owners = chat.get_owners()
         admins = chat.get_admins()
-
+        admin_users = [admin.user for admin in admins]
         assert owners.count() == 1
         assert owners.first().user == owner
-        assert admins.count() == 1
-        assert admins.first().user == admin
+        assert admins.count() == 2
+        assert owner in admin_users
+        assert admin in admin_users
+        assert member not in admin_users
 
 
 @pytest.mark.django_db

@@ -2,13 +2,12 @@
 
 This module defines the core models for managing chat rooms and their participants
 in the Durak online multiplayer system. It includes models for representing chats,
-user roles, and membership management.
+chat membership, and stored messages.
 
 Classes:
-    Chat: Represents a chat room (group or private) used for communication.
-    ChatParticipant: Defines user participation in a chat, including their role
-        and join date.
-    Message: Represents a single message sent between users in a chat.
+    Chat: Represents a chat room (group, lobby or private).
+    ChatParticipant: Defines user participation in a chat with assigned roles.
+    Message: Represents a message sent inside a chat.
 """
 
 import uuid
@@ -21,31 +20,32 @@ User = get_user_model()
 
 
 class Chat(models.Model):
-    """Represents a chat room, either group or private.
+    """Represents a chat room (private, group, or lobby).
 
-        Each chat can contain multiple participants and messages. This model is used
-        to logically separate different communication contexts (e.g., private DM or
-        group lobby discussion).
+    Chats are used to isolate different communication contexts in the game:
+    - private chats (DM between two users)
+    - group chats
+    - automatically created lobby chats (is_lobby=True)
 
-        Attributes:
-            id (UUIDField): Primary key (UUID4) for unique chat identification.
-            name (CharField): Optional name of the chat room (e.g., "Lobby 1").
-            description (TextField): Optional text describing the chat purpose.
-            is_group (BooleanField): Defines if chat is a group or private conversation.
-            created_at (DateTimeField): Timestamp for chat creation.
+    Messages are always attached to a Chat, not directly to a Lobby or users.
 
-        Example:
-            chat = Chat.objects.create(
-                name="General Lobby",
-                description="Main lobby for all players",
-                is_group=True
-            )
-        """
+    Attributes:
+        id (UUID): Unique identifier for the chat.
+        name (str): Optional name (e.g. "Lobby #1").
+        description (str): Optional description.
+        is_group (bool): Whether the chat supports multiple participants.
+        is_lobby (bool): Whether the chat belongs to a game lobby.
+        lobby (ForeignKey): Optional reference to a Lobby object.
+        created_at (datetime): Timestamp of creation.
+    """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, blank=True)
     description = models.TextField(blank=True)
+
     is_group = models.BooleanField(default=False)
     is_lobby = models.BooleanField(default=False)
+
     lobby = models.ForeignKey(
         "game.Lobby",
         on_delete=models.CASCADE,
@@ -53,6 +53,7 @@ class Chat(models.Model):
         blank=True,
         related_name="chat"
     )
+
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -64,45 +65,38 @@ class Chat(models.Model):
         ]
 
     def __str__(self):
-        """Return a readable representation of the chat.
-
-        Returns:
-            str: Chat name or fallback to ID.
-        """
+        """Return the chat name if available, otherwise fallback to ID."""
         return self.name or f"Chat {self.id}"
 
     def get_participants(self):
-        """Return a QuerySet of users participating in this chat.
+        """Return all users currently participating in this chat.
 
         Returns:
-            QuerySet[User]: Users who are members of this chat.
+            QuerySet[User]: Distinct list of users.
         """
-        return User.objects.filter(chat_participations__chat=self).select_related().distinct()
+        return User.objects.filter(chat_participations__chat=self).distinct()
 
     def has_participant(self, user):
-        """Check if a user is a member of the chat.
+        """Determine whether a given user is part of this chat.
 
         Args:
             user (User): The user to check.
 
         Returns:
-            bool: True if user participates in this chat.
+            bool: True if the user participates in the chat.
         """
         return ChatParticipant.objects.filter(chat=self, user=user).exists()
 
     def add_participant(self, user, role="member"):
-        """Add a user to the chat with an optional role.
-
-        If the user already exists in the chat, do not create a duplicate; optionally
-        update their role if it differs.
+        """Add a user to the chat or update their role.
 
         Args:
-            user (User): The user to add.
-            role (str): Role in the chat ("owner", "admin", or "member").
-        Returns:
-            ChatParticipant: The participant instance and a boolean created flag.
-        """
+            user (User): User to add.
+            role (str): One of: "owner", "admin", "member".
 
+        Returns:
+            tuple(ChatParticipant, bool): participant instance and created flag
+        """
         with transaction.atomic():
             participant, created = ChatParticipant.objects.get_or_create(
                 chat=self,
@@ -116,58 +110,45 @@ class Chat(models.Model):
         return participant, created
 
     def remove_participant(self, user):
-        """Remove a user from the chat.
+        """Remove a participant from the chat.
 
         Args:
-            user (User): The user to remove.
+            user (User): User to remove.
 
         Returns:
-            int: Number of deleted rows (0 or 1).
+            int: Number of deleted records (0 or 1).
         """
         return ChatParticipant.objects.filter(chat=self, user=user).delete()[0]
 
     def get_owners(self):
-        """Return a QuerySet of ChatParticipant objects with role 'owner'.
-
-        Returns:
-            QuerySet[ChatParticipant]: Participant records for owners (selects related user).
-        """
+        """Return all owners of this chat."""
         return ChatParticipant.objects.filter(chat=self, role="owner").select_related("user")
 
     def get_admins(self):
-        """Return a QuerySet of ChatParticipant objects with role 'admin'.
-
-        Returns:
-            QuerySet[ChatParticipant]: Participant records for admins (selects related user).
-        """
-        return ChatParticipant.objects.filter(chat=self, role="admin").select_related("user")
+        """Return all admins (role admin or owner)."""
+        return ChatParticipant.objects.filter(
+            chat=self, role__in=["admin", "owner"]
+        ).select_related("user")
 
 
 class ChatParticipant(models.Model):
-    """Defines a user's participation and role within a chat.
+    """Represents a user's membership in a chat with assigned permissions.
 
-        Each record represents one user's membership in one chat. Roles determine
-        their permissions (e.g., ownership, admin privileges, or regular member).
+    Each user can belong to multiple chats and have different roles in each.
 
-        Attributes:
-            id (UUIDField): Primary key (UUID4) for unique participant record.
-            chat (ForeignKey): The chat this user belongs to.
-            user (ForeignKey): The user participating in the chat.
-            role (CharField): User's role in the chat ("owner", "admin", "member").
-            joined_at (DateTimeField): Timestamp of when the user joined the chat.
+    Attributes:
+        chat (Chat): The chat the user participates in.
+        user (User): The participating user.
+        role (str): Permission level ("owner", "admin", "member").
+        joined_at (datetime): When the user joined the chat.
+    """
 
-        Example:
-            participant = ChatParticipant.objects.create(
-                chat=chat,
-                user=user,
-                role="admin"
-            )
-        """
     ROLE_CHOICES = [
         ('owner', 'Owner'),
         ('admin', 'Admin'),
         ('member', 'Member'),
     ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE)
     user = models.ForeignKey('accounts.User', related_name='chat_participations', on_delete=models.CASCADE)
@@ -185,75 +166,42 @@ class ChatParticipant(models.Model):
         ]
 
     def __str__(self):
-        """Return readable representation of the participant.
-
-        Returns:
-            str: User’s username and chat name.
-        """
-        return f"User {self.user.username} in {self.chat} chat"
+        return f"{self.user.username} in {self.chat}"
 
     def is_owner(self):
-        """Check if the participant is the chat owner.
-
-        Returns:
-            bool: True if participant has 'owner' role.
-        """
+        """Return True if participant is the owner."""
         return self.role == "owner"
 
     def is_admin(self):
-        """Check if the participant has admin privileges.
-
-        Returns:
-            bool: True if role is 'admin' or 'owner'.
-        """
+        """Return True if participant has admin or owner rights."""
         return self.role in ("admin", "owner")
 
     def promote(self):
-        """Promote participant to admin if not already."""
+        """Promote user to admin."""
         if self.role == "member":
             self.role = "admin"
             self.save(update_fields=["role"])
 
     def demote(self):
-        """Demote participant to member if currently admin."""
+        """Demote admin to member."""
         if self.role == "admin":
             self.role = "member"
             self.save(update_fields=["role"])
 
 
 class Message(models.Model):
-    """Chat message model for storing messages in lobbies and private conversations.
-    
-    This model handles both lobby-based group messages and private direct messages
-    between users. Messages can be associated with either a lobby (for public chat)
-    or a receiver (for private messaging).
-    
+    """Represents a text message inside a chat.
+
+    Messages belong strictly to a Chat instance. Lobby messages and private
+    messages are simply different chat types — there are no separate fields
+    for lobby/receiver.
+
     Attributes:
-        id (UUIDField): Primary key using UUID4 for unique message identification.
-        sender (ForeignKey): Reference to the User who sent the message.
-        receiver (ForeignKey, optional): Target User for private messages. Null for lobby messages.
-        lobby (ForeignKey, optional): Target Lobby for group messages. Null for private messages.
-        content (TextField): The actual message content/text.
-        sent_at (DateTimeField): Timestamp when the message was created (auto-generated).
-        
-    Note:
-        Either 'receiver' or 'lobby' should be set, but not both. This creates a logical
-        separation between private messages and lobby-based group chat.
-        
-    Example:
-        # Create a lobby message
-        Message.objects.create(
-            sender=user,
-            lobby=lobby,
-            content="Hello everyone!"
-        )
-        
-        # Create a private message
-        Message.objects.create(
-            sender=user1,
-            receiver=user2,
-            content="Private message"
-        )
+        id (UUID): Unique message identifier.
+        sender (User): The user who sent the message.
+        chat (Chat): Chat to which the message belongs.
+        content (str): Text content.
+        sent_at (datetime): Timestamp of message creation.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -263,103 +211,31 @@ class Message(models.Model):
     sent_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        """Return string representation of the message.
-        
-        Returns:
-            str: Formatted string showing sender and message preview.
-        """
+        """Return a concise textual preview."""
         preview = self.content[:50] + "..." if len(self.content) > 50 else self.content
         return f"{self.sender.username}: {preview}"
 
-    def is_private(self):
-        """Check if this is a private message between users.
-        
-        Returns:
-            bool: True if message has a receiver (private), False if lobby message.
-        """
-        return self.receiver is not None
-
     def is_lobby_message(self):
-        """Check if this is a lobby/group message.
-        
-        Returns:
-            bool: True if message belongs to a lobby, False if private message.
-        """
-        return self.lobby is not None
+        """Determine if this message belongs to a lobby chat."""
+        return self.chat.is_lobby
+
+    def is_private(self):
+        """Determine if this is a private 1-on-1 message."""
+        return not self.chat.is_group and not self.chat.is_lobby
 
     def get_chat_context(self):
-        """Get the context (lobby or private chat) for this message.
-        
+        """Return structured information about the chat type.
+
         Returns:
-            dict: Dictionary with context type and relevant object.
+            dict: {type: 'private'|'group'|'lobby', name: str}
         """
-        if self.lobby:
-            return {
-                'type': 'lobby',
-                'context': self.lobby,
-                'context_name': self.lobby.name
-            }
-        elif self.receiver:
-            return {
-                'type': 'private',
-                'context': self.receiver,
-                'context_name': f"Private chat with {self.receiver.username}"
-            }
-        return {'type': 'unknown', 'context': None, 'context_name': 'Unknown'}
+        if self.chat.is_lobby:
+            return {"type": "lobby", "name": self.chat.name or "Lobby"}
 
-    @classmethod
-    def get_lobby_messages(cls, lobby, limit=50):
-        """Get recent messages for a specific lobby.
-        
-        Args:
-            lobby (Lobby): The lobby to get messages for.
-            limit (int): Maximum number of messages to retrieve.
-            
-        Returns:
-            QuerySet: Recent messages in the lobby.
-        """
-        return cls.objects.filter(lobby=lobby).order_by('-sent_at')[:limit]
+        if self.chat.is_group:
+            return {"type": "group", "name": self.chat.name or "Group Chat"}
 
-    @classmethod
-    def get_private_conversation(cls, user1, user2, limit=50):
-        """Get recent private messages between two users.
-        
-        Args:
-            user1 (User): First user in the conversation.
-            user2 (User): Second user in the conversation.
-            limit (int): Maximum number of messages to retrieve.
-            
-        Returns:
-            QuerySet: Recent messages between the users.
-        """
-        return cls.objects.filter(
-            models.Q(sender=user1, receiver=user2) |
-            models.Q(sender=user2, receiver=user1),
-            lobby__isnull=True
-        ).order_by('-sent_at')[:limit]
-
-    def clean(self):
-        """Validate that message has either lobby or receiver, but not both.
-        
-        Raises:
-            ValidationError: If both lobby and receiver are set, or if neither is set.
-        """
-        from django.core.exceptions import ValidationError
-
-        if self.lobby and self.receiver:
-            raise ValidationError("Message cannot have both lobby and receiver.")
-        if not self.lobby and not self.receiver:
-            raise ValidationError("Message must have either lobby or receiver.")
-
-    def save(self, *args, **kwargs):
-        """Override save to ensure message validation.
-        
-        Args:
-            *args: Variable length argument list.
-            **kwargs: Arbitrary keyword arguments.
-        """
-        self.clean()
-        super().save(*args, **kwargs)
+        return {"type": "private", "name": "Private Chat"}
 
     class Meta:
         verbose_name = 'Message'
