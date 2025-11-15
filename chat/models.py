@@ -45,6 +45,14 @@ class Chat(models.Model):
     name = models.CharField(max_length=100, blank=True)
     description = models.TextField(blank=True)
     is_group = models.BooleanField(default=False)
+    is_lobby = models.BooleanField(default=False)
+    lobby = models.ForeignKey(
+        "game.Lobby",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="chat"
+    )
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -250,10 +258,7 @@ class Message(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sender = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='sent_messages')
-    receiver = models.ForeignKey('accounts.User', on_delete=models.CASCADE, null=True, blank=True,
-                                 related_name='received_messages')
-    lobby = models.ForeignKey('game.Lobby', on_delete=models.CASCADE, null=True, blank=True,
-                              related_name='messages')
+    chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
     content = models.TextField()
     sent_at = models.DateTimeField(auto_now_add=True)
 
@@ -361,7 +366,6 @@ class Message(models.Model):
         verbose_name_plural = 'Messages'
         ordering = ['-sent_at']
         indexes = [
-            models.Index(fields=['lobby', '-sent_at']),
-            models.Index(fields=['sender', 'receiver', '-sent_at']),
+            models.Index(fields=['sender', 'chat', '-sent_at']),
             models.Index(fields=['-sent_at']),
         ]
