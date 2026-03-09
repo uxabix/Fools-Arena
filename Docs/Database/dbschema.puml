@@ -1,0 +1,210 @@
+@startuml
+' === LOOKUP TABLES ===
+
+entity "CardSuit" as CardSuit {
+  *id : smallint
+  ---
+  name : varchar
+  color : ENUM(red, black)
+}
+
+entity "CardRank" as CardRank {
+  *id : smallint
+  ---
+  name : varchar
+  value : int
+}
+
+' === CORE ENTITIES ===
+
+entity "User" as User {
+  *id : UUID
+  ---
+  username : varchar
+  email : varchar
+  password_hash : varchar
+  avatar_url : varchar?
+  created_at : timestamp
+}
+
+entity "Lobby" as Lobby {
+  *id : UUID
+  ---
+  name : varchar
+  owner_id : UUID [FK → User.id]
+  is_private : bool
+  password_hash : varchar?
+  status : ENUM(waiting, playing, closed)
+  created_at : timestamp
+}
+
+entity "LobbySettings" as LobbySettings {
+  *id : UUID
+  ---
+  lobby_id : UUID [FK → Lobby.id]
+  max_players : int
+  card_count : ENUM(24, 36, 52)
+  is_transferable : bool
+  neighbor_throw_only : bool
+  allow_jokers : bool
+  turn_time_limit : int?
+  special_rule_set_id : UUID [FK → SpecialRuleSet.id]?
+}
+
+entity "LobbyPlayer" as LobbyPlayer {
+  *id : UUID
+  ---
+  lobby_id : UUID [FK → Lobby.id]
+  user_id : UUID [FK → User.id]
+  status : ENUM(waiting, ready, playing, left)
+}
+
+entity "Game" as Game {
+  *id : UUID
+  ---
+  lobby_id : UUID [FK → Lobby.id]
+  trump_card_id : UUID [FK → Card.id]
+  started_at : timestamp
+  finished_at : timestamp?
+  status : ENUM(in_progress, finished)
+  loser_id : UUID [FK → User.id]?
+}
+
+entity "GamePlayer" as GamePlayer {
+  *id : UUID
+  ---
+  game_id : UUID [FK → Game.id]
+  user_id : UUID [FK → User.id]
+  seat_position : int
+  cards_remaining : int
+}
+
+entity "Card" as Card {
+  *id : UUID
+  ---
+  suit_id : smallint [FK → CardSuit.id]
+  rank_id : smallint [FK → CardRank.id]
+  special_card_id : UUID? [FK → SpecialCard.id]
+}
+
+' === CARD STATES ===
+
+entity "GameDeck" as GameDeck {
+  *id : UUID
+  ---
+  game_id : UUID [FK → Game.id]
+  card_id : UUID [FK → Card.id]
+  position : int
+}
+
+entity "PlayerHand" as PlayerHand {
+  *id : UUID
+  ---
+  game_id : UUID [FK → Game.id]
+  player_id : UUID [FK → User.id]
+  card_id : UUID [FK → Card.id]
+  order_in_hand : int?
+}
+
+entity "TableCard" as TableCard {
+  *id : UUID
+  ---
+  game_id : UUID [FK → Game.id]
+  attack_card_id : UUID [FK → Card.id]
+  defense_card_id : UUID? [FK → Card.id]
+}
+
+entity "DiscardPile" as DiscardPile {
+  *id : UUID
+  ---
+  game_id : UUID [FK → Game.id]
+  card_id : UUID [FK → Card.id]
+  position : int?
+}
+
+' === RULES ===
+
+entity "SpecialRuleSet" as SpecialRuleSet {
+  *id : UUID
+  ---
+  name : varchar
+  description : text?
+  min_players : int
+}
+
+entity "SpecialCard" as SpecialCard {
+  *id : UUID
+  ---
+  name : varchar
+  effect_type : ENUM(skip, reverse, draw, custom)
+  effect_value : jsonb?
+  description : text?
+}
+
+entity "SpecialRuleSetCard" as SpecialRuleSetCard {
+  *id : UUID
+  ---
+  rule_set_id : UUID [FK → SpecialRuleSet.id]
+  card_id : UUID [FK → SpecialCard.id]
+}
+
+' === GAME FLOW ===
+
+entity "Turn" as Turn {
+  *id : UUID
+  ---
+  game_id : UUID [FK → Game.id]
+  player_id : UUID [FK → User.id]
+  turn_number : int
+}
+
+entity "Move" as Move {
+  *id : UUID
+  ---
+  turn_id : UUID [FK → Turn.id]
+  table_card_id : UUID [FK → TableCard.id]
+  action_type : ENUM(attack, defend, pickup)
+  created_at : timestamp
+}
+
+entity "Message" as Message {
+  *id : UUID
+  ---
+  sender_id : UUID [FK → User.id]
+  receiver_id : UUID? [FK → User.id]
+  lobby_id : UUID? [FK → Lobby.id]
+  content : text
+  sent_at : timestamp
+}
+
+' === RELATIONSHIPS ===
+
+User ||--o{ Lobby
+User ||--o{ LobbyPlayer
+User ||--o{ Message
+User ||--o{ GamePlayer
+Lobby ||--|| LobbySettings
+Lobby ||--o{ LobbyPlayer
+Lobby ||--o{ Game
+Lobby ||--o{ Message
+Game ||--o{ GamePlayer
+Game ||--o{ Turn
+Game ||--|| Card : trump >
+Game ||--o{ GameDeck
+Game ||--o{ PlayerHand
+Game ||--o{ TableCard
+Game ||--o{ DiscardPile
+Game ||--|| User : loser >
+Turn ||--o{ Move
+TableCard ||--o{ Move
+CardSuit ||--o{ Card
+CardRank ||--o{ Card
+Card ||--o{ GameDeck
+Card ||--o{ PlayerHand
+Card ||--o{ TableCard
+Card ||--o{ DiscardPile
+SpecialRuleSet ||--o{ LobbySettings
+SpecialRuleSet ||--o{ SpecialRuleSetCard
+SpecialCard ||--o{ SpecialRuleSetCard
+SpecialCard ||--o{ Card
+@enduml
