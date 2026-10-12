@@ -6,6 +6,21 @@
 
   <section class="game-panel">
     <div id="lobby-banner" class="game-banner game-banner--wait" role="status" aria-live="polite"></div>
+    <div id="lobby-invite" class="game-banner game-banner--wait lobby-invite" hidden>
+      <h3 class="game-subtitle">Invite players</h3>
+      <p>This lobby is hidden from the list. Share this link, and tell players the password you chose. The password cannot be shown again.</p>
+      <label class="lobby-field__label" for="lobby-invite-url">Lobby link</label>
+      <input id="lobby-invite-url" class="lobby-invite__link" type="text" readonly />
+      <button type="button" id="lobby-invite-copy" class="game-btn game-btn--secondary">Copy link</button>
+      <p id="lobby-invite-status" role="status"></p>
+    </div>
+    <form id="private-join" class="game-form game-form--stacked" hidden>
+      <p id="private-join-lead" class="lobby-lead">This lobby is private. Enter the password from the player who invited you.</p>
+      <label class="lobby-field__label" for="private-join-password">Password</label>
+      <input id="private-join-password" name="password" type="password" autocomplete="current-password" required />
+      <p id="private-join-error" class="lobby-field__error" role="alert" hidden></p>
+      <button type="submit" class="game-btn game-btn--primary">Join lobby</button>
+    </form>
     <h2 id="lobby-title" class="game-title">Lobby</h2>
     <pre id="lobby-meta" class="game-meta" aria-label="Lobby settings"></pre>
     <ul id="players" class="game-players"></ul>
@@ -117,8 +132,27 @@
     const t = await r.text();
     let data;
     try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
-    if (!r.ok) throw new Error((data && data.detail) || r.statusText || String(r.status));
+    if (!r.ok) {
+      const error = new Error((data && data.detail) || r.statusText || String(r.status));
+      error.data = data;
+      error.status = r.status;
+      throw error;
+    }
     return data;
+  }
+
+  function showPrivateJoin(data) {
+    document.getElementById("lobby-title").textContent = (data && data.name) || "Private lobby";
+    document.getElementById("lobby-meta").textContent = "";
+    document.getElementById("players").innerHTML = "";
+    document.getElementById("lobby-banner").textContent = "";
+    document.getElementById("lobby-invite").hidden = true;
+    document.getElementById("btn-join").classList.add("game-btn--hidden");
+    document.getElementById("btn-leave").classList.add("game-btn--hidden");
+    document.getElementById("btn-ready").classList.add("game-btn--hidden");
+    document.getElementById("btn-start").classList.add("game-btn--hidden");
+    document.getElementById("private-join").hidden = false;
+    document.getElementById("private-join-password").focus();
   }
 
   function render(L) {
@@ -151,6 +185,14 @@
     btnStart.classList.toggle("game-btn--hidden", !isOwner || !waiting || L.status === "closed");
     btnStart.disabled = !L.can_start;
     btnStart.title = L.can_start ? "" : "At least two players must click Ready.";
+
+    const invite = document.getElementById("lobby-invite");
+    const showInvite = !!(L.is_private && isMember);
+    invite.hidden = !showInvite;
+    if (showInvite) {
+      document.getElementById("lobby-invite-url").value = location.href;
+    }
+    document.getElementById("private-join").hidden = true;
 
     const ban = document.getElementById("lobby-banner");
     if (L.status === "closed") {
@@ -192,6 +234,10 @@
       const L = await api("GET", API);
       render(L);
     } catch (e) {
+      if (e.data && e.data.code === "password_required") {
+        showPrivateJoin(e.data);
+        return;
+      }
       document.getElementById("err").textContent = e.message;
     }
   }
@@ -207,6 +253,39 @@
     });
     log.scrollTop = log.scrollHeight;
   }
+  document.getElementById("lobby-invite-copy").addEventListener("click", async function () {
+    const input = document.getElementById("lobby-invite-url");
+    const status = document.getElementById("lobby-invite-status");
+    input.focus();
+    input.select();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(input.value);
+      } else {
+        document.execCommand("copy");
+      }
+      status.textContent = "Link copied.";
+    } catch (ignore) {
+      status.textContent = "Select the link and copy it.";
+    }
+  });
+  document.getElementById("private-join").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    const error = document.getElementById("private-join-error");
+    const input = document.getElementById("private-join-password");
+    error.hidden = true;
+    error.textContent = "";
+    try {
+      const L = await api("POST", API + "join/", { password: input.value });
+      input.value = "";
+      render(L);
+    } catch (e) {
+      error.hidden = false;
+      error.textContent = (e.data && e.data.detail) || e.message || "Could not join this lobby.";
+      input.setAttribute("aria-invalid", "true");
+      input.focus();
+    }
+  });
   document.getElementById("btn-join").addEventListener("click", async function () {
     document.getElementById("err").textContent = "";
     try {

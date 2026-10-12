@@ -1,120 +1,118 @@
 {% extends "base.html" %}
+{% load static %}
+
 {% block title %}Lobbies — Fools Arena{% endblock %}
+
 {% block content %}
-<div class="game-page lobby-list-page">
-  <section class="game-panel">
-    <h2 class="game-title">Open lobbies</h2>
-    <p id="lobby-status" class="game-status game-status--loading">Loading…</p>
-    <ul id="lobby-list" class="game-lobby-list" aria-label="Public lobbies"></ul>
+<div class="game-page lobby-list-page"
+     data-user-id="{{ request.user.pk }}"
+     data-current-lobby-id="{% if current_lobby %}{{ current_lobby.id }}{% endif %}"
+     data-current-lobby-name="{% if current_lobby %}{{ current_lobby.name }}{% endif %}"
+     data-current-lobby-url="{% if current_lobby %}{% url 'fools-lobby-detail-page' current_lobby.id %}{% endif %}">
+  <section class="game-panel" aria-labelledby="lobby-list-title">
+    <div class="lobby-list-head">
+      <h1 id="lobby-list-title" class="game-title">Lobbies</h1>
+      <button type="button" id="lobby-refresh" class="game-btn game-btn--secondary">Refresh</button>
+    </div>
+    <p class="lobby-lead">Public lobbies that are waiting for players. A private lobby is not shown here.</p>
+
+    {% if current_lobby %}
+    <div class="lobby-current game-banner game-banner--wait">
+      <p>You are in <strong class="lobby-current__name">{{ current_lobby.name }}</strong>. Creating or joining another lobby takes you out of this one.</p>
+      <a class="game-btn game-btn--primary" href="{% url 'fools-lobby-detail-page' current_lobby.id %}">Open lobby</a>
+    </div>
+    {% endif %}
+
+    <p id="lobby-loading" class="lobby-status" role="status">Loading lobbies…</p>
+    <div id="lobby-error" class="lobby-state" hidden>
+      <p id="lobby-error-text" role="alert"></p>
+      <button type="button" id="lobby-retry" class="game-btn game-btn--secondary">Try again</button>
+    </div>
+    <div id="lobby-empty" class="lobby-state" hidden>
+      <p>No lobbies are waiting for players.</p>
+      <button type="button" id="lobby-empty-create" class="game-btn game-btn--primary">Create lobby</button>
+    </div>
+    <ul id="lobby-list" class="lobby-list" aria-label="Public lobbies" hidden></ul>
   </section>
 
-  <section class="game-panel">
-    <h3 class="game-subtitle">Create lobby</h3>
-    <form id="create-form" class="game-form">
-      <label class="game-form__full">
-        Name
-        <input name="name" required maxlength="100" placeholder="Room name" autocomplete="off" />
-      </label>
-      <label class="game-form__full game-form__check">
-        <span><input type="checkbox" name="is_private" /> Private room</span>
-      </label>
-      <label>
-        Password
-        <input name="password" type="password" autocomplete="new-password" placeholder="If private" />
-      </label>
-      <label>
-        Max players
-        <input name="max_players" type="number" min="2" max="8" value="4" />
-      </label>
-      <label>
-        Deck size
-        <select name="card_count">
+  <section class="game-panel" aria-labelledby="create-lobby-title">
+    <h2 id="create-lobby-title" class="game-subtitle">Create a lobby</h2>
+    <p class="lobby-lead">Creating a lobby takes you out of any lobby you are already in.</p>
+    <button type="button" id="create-open" class="game-btn game-btn--primary">Create lobby</button>
+
+    <form id="create-form" class="game-form game-form--stacked lobby-create" hidden novalidate>
+      <div class="lobby-field game-form__full" data-field="name">
+        <label class="lobby-field__label" for="id_name">Lobby name</label>
+        <input id="id_name" name="name" type="text" maxlength="100" placeholder="Evening game" autocomplete="off" required aria-describedby="name-error" />
+        <p id="name-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+
+      <div class="lobby-field" data-field="max_players">
+        <label class="lobby-field__label" for="id_max_players">Players</label>
+        <input id="id_max_players" name="max_players" type="number" min="2" max="8" value="4" inputmode="numeric" required aria-describedby="max-players-hint max-players-error" />
+        <p id="max-players-hint" class="field-hint">2–8</p>
+        <p id="max-players-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+
+      <div class="lobby-field" data-field="card_count">
+        <label class="lobby-field__label" for="id_card_count">Deck</label>
+        <select id="id_card_count" name="card_count" required aria-describedby="card-count-error">
           <option value="24">24 cards</option>
           <option value="36" selected>36 cards</option>
           <option value="52">52 cards</option>
         </select>
-      </label>
-      <label class="game-form__full game-form__check">
-        <span><input type="checkbox" name="neighbor_throw_only" /> Neighbor throw only</span>
-      </label>
-      <label class="game-form__full game-form__check">
-        <span><input type="checkbox" name="is_transferable" /> Transferable</span>
-      </label>
-      <div class="game-form__full">
-        <button type="submit" class="game-btn game-btn--primary">Create lobby</button>
+        <p id="card-count-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+
+      <div class="lobby-field game-form__full" data-field="is_private">
+        <label class="game-form__check" for="id_is_private">
+          <input id="id_is_private" name="is_private" type="checkbox" />
+          <span>Private lobby</span>
+        </label>
+        <p id="private-hint" class="field-hint">A private lobby is hidden from this list. Players need the lobby link and the password.</p>
+      </div>
+
+      <div class="lobby-field game-form__full" data-field="password" id="password-field" hidden>
+        <label class="lobby-field__label" for="id_password">Password</label>
+        <input id="id_password" name="password" type="password" maxlength="128" autocomplete="new-password" placeholder="Share this with invited players" aria-describedby="password-hint password-error" />
+        <p id="password-hint" class="field-hint">Tell players this password yourself. It cannot be shown again after the lobby is created.</p>
+        <p id="password-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+
+      <details class="lobby-more game-form__full">
+        <summary>More rules</summary>
+        <div class="lobby-field" data-field="neighbor_throw_only">
+          <label class="game-form__check" for="id_neighbor_throw_only">
+            <input id="id_neighbor_throw_only" name="neighbor_throw_only" type="checkbox" />
+            <span>Neighbors only</span>
+          </label>
+          <p class="field-hint">Only the players sitting beside the defender can add extra cards.</p>
+        </div>
+      </details>
+
+      <p id="create-error" class="lobby-field__error game-form__full" role="alert" hidden></p>
+
+      <div class="lobby-create__actions game-form__full">
+        <button type="submit" id="create-submit" class="game-btn game-btn--primary">
+          <span id="create-submit-label">Create lobby</span>
+        </button>
+        <button type="button" id="create-cancel" class="game-btn game-btn--secondary">Cancel</button>
       </div>
     </form>
-    <p id="create-error" class="text-error" aria-live="polite"></p>
   </section>
+
+  <dialog id="leave-lobby-dialog" class="lobby-dialog" aria-labelledby="leave-lobby-title">
+    <h2 id="leave-lobby-title">Leave your current lobby?</h2>
+    <p id="leave-lobby-text"></p>
+    <form method="dialog" class="lobby-dialog__actions">
+      <button type="submit" class="game-btn game-btn--secondary" value="cancel">Cancel</button>
+      <a id="leave-return" class="game-btn game-btn--secondary" href="{% if current_lobby %}{% url 'fools-lobby-detail-page' current_lobby.id %}{% endif %}">Return to lobby</a>
+      <button type="submit" id="leave-confirm" class="game-btn game-btn--primary" value="create">Create anyway</button>
+    </form>
+  </dialog>
 </div>
-<script>
-(function () {
-  const API = "/api/fools/lobbies/";
-  function csrf() {
-    const m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : "";
-  }
-  async function api(method, url, body) {
-    const opts = { method, credentials: "same-origin", headers: {} };
-    if (body !== undefined) {
-      opts.headers["Content-Type"] = "application/json";
-      opts.headers["X-CSRFToken"] = csrf();
-      opts.body = JSON.stringify(body);
-    }
-    const r = await fetch(url, opts);
-    const t = await r.text();
-    let data;
-    try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
-    if (!r.ok) throw new Error((data && data.detail) || r.statusText || String(r.status));
-    return data;
-  }
-  function renderList(rows) {
-    const ul = document.getElementById("lobby-list");
-    ul.innerHTML = "";
-    rows.forEach(function (L) {
-      const li = document.createElement("li");
-      const a = document.createElement("a");
-      a.href = "/fools/lobbies/" + L.id + "/";
-      a.textContent = L.name + " (" + L.players.length + "/" + L.settings.max_players + ")";
-      li.appendChild(a);
-      ul.appendChild(li);
-    });
-    const st = document.getElementById("lobby-status");
-    st.textContent = rows.length ? "" : "No public lobbies.";
-    st.classList.toggle("game-status--loading", false);
-  }
-  async function refresh() {
-    try {
-      const rows = await api("GET", API);
-      renderList(rows);
-    } catch (e) {
-      const st = document.getElementById("lobby-status");
-      st.textContent = "Could not load lobbies: " + e.message;
-      st.classList.remove("game-status--loading");
-    }
-  }
-  document.getElementById("create-form").addEventListener("submit", async function (ev) {
-    ev.preventDefault();
-    document.getElementById("create-error").textContent = "";
-    const f = ev.target;
-    const body = {
-      name: f.name.value.trim(),
-      is_private: f.is_private.checked,
-      password: f.password.value || "",
-      max_players: Number(f.max_players.value),
-      card_count: Number(f.card_count.value),
-      neighbor_throw_only: f.neighbor_throw_only.checked,
-      is_transferable: f.is_transferable.checked,
-      allow_jokers: false
-    };
-    try {
-      const L = await api("POST", API, body);
-      location.href = "/fools/lobbies/" + L.id + "/";
-    } catch (e) {
-      document.getElementById("create-error").textContent = e.message;
-    }
-  });
-  refresh();
-})();
-</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'fools/js/lobby_list.js' %}?v={{ asset_lobby_js_v }}"></script>
 {% endblock %}

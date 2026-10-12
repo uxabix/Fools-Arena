@@ -41,7 +41,7 @@ from fools.models import (
 )
 from chat.services import get_lobby_chat, remove_user_from_lobby_chat
 from fools.card_catalog import ensure_playing_cards_for_deck_size
-from fools.realtime import broadcast_game, broadcast_lobby
+from fools.realtime import broadcast_game, broadcast_lobby, broadcast_lobby_list
 
 User = get_user_model()
 
@@ -223,6 +223,7 @@ def _maybe_finish_game(game: Game):
         LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
         broadcast_game(game.id, "game_finished", {"loser_id": str(game.loser_id)})
         broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
+        publish_lobby_list(lobby.id)
 
 
 def _rotate_roles_after_success(game: Game):
@@ -302,6 +303,33 @@ def _all_defended(game: Game) -> bool:
     return qs.exists() and not qs.filter(defense_card__isnull=True).exists()
 
 
+def publish_lobby_list(lobby_id):
+    """Queue a public-list update for after the current transaction commits.
+
+    A waiting public lobby with someone still in it is upserted. Anything
+    else (private, playing, closed, or empty) is removed. The snapshot is
+    the same one the list API returns.
+
+    Args:
+        lobby_id: Lobby to re-evaluate.
+    """
+    lobby_key = str(lobby_id)
+
+    def send():
+        try:
+            lobby = Lobby.objects.select_related("settings").get(pk=lobby_key)
+        except Lobby.DoesNotExist:
+            broadcast_lobby_list("lobby_removed", {"id": lobby_key})
+            return
+        still_there = lobby.players.exclude(status="left").exists()
+        if lobby.is_private or lobby.status != "waiting" or not still_there:
+            broadcast_lobby_list("lobby_removed", {"id": lobby_key})
+            return
+        broadcast_lobby_list("lobby_upsert", serialize_lobby(lobby))
+
+    transaction.on_commit(send)
+
+
 def leave_other_active_lobbies(user: User, *, except_lobby: Lobby | None = None):
     """Leave every active lobby membership except ``except_lobby`` (if given).
 
@@ -369,6 +397,7 @@ def create_lobby(
     LobbyPlayer.objects.create(lobby=lobby, user=owner, status="waiting")
     get_lobby_chat(lobby)
     broadcast_lobby(lobby.id, "lobby_created", {"lobby_id": str(lobby.id)})
+    publish_lobby_list(lobby.id)
     return lobby
 
 
@@ -394,7 +423,7 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
         raise GameError("Lobby is full", "full")
     if lobby.is_private:
         if not lobby.password_hash or not check_password(password or "", lobby.password_hash):
-            raise GameError("Invalid password", "auth")
+            raise GameError("That password is incorrect.", "auth")
     if LobbyPlayer.objects.filter(lobby=lobby, user=user).exclude(status="left").exists():
         raise GameError("Already in lobby", "duplicate")
     if LobbyPlayer.objects.filter(user=user, lobby=lobby, status="left").exists():
@@ -405,6 +434,7 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
         lp = LobbyPlayer.objects.create(lobby=lobby, user=user, status="waiting")
     get_lobby_chat(lobby)
     broadcast_lobby(lobby.id, "player_joined", {"user_id": str(user.id)})
+    publish_lobby_list(lobby.id)
     return lp
 
 
@@ -448,6 +478,7 @@ def leave_lobby(lobby: Lobby, user: User) -> dict:
         new_owner_id = str(next_lp.user_id)
 
     broadcast_lobby(lobby.id, "player_left", {"user_id": str(user.id)})
+    publish_lobby_list(lobby.id)
     return {"lobby_closed": lobby_closed, "new_owner_id": new_owner_id}
 
 
@@ -575,6 +606,7 @@ def start_game(lobby: Lobby, user: User) -> Game:
 
     broadcast_lobby(lobby.id, "game_started", {"game_id": str(game.id)})
     broadcast_game(game.id, "game_started", {})
+    publish_lobby_list(lobby.id)
     return game
 
 

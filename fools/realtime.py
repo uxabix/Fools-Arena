@@ -31,6 +31,19 @@ def _send_group(group: str, message: dict):
     )
 
 
+def broadcast_lobby_list(event: str, payload: dict | None = None):
+    """Notify browsers that are watching the public lobby list.
+
+    The group is ``lobby_list``. Payloads are public waiting lobbies only;
+    callers omit private rooms.
+
+    Args:
+        event: ``lobby_upsert`` or ``lobby_removed``.
+        payload: Lobby snapshot, or ``{"id": ...}`` when a row should go.
+    """
+    _send_group("lobby_list", {"event": event, "payload": payload or {}})
+
+
 def broadcast_lobby(lobby_id, event: str, payload: dict | None = None):
     """Notify every subscriber of a lobby room.
 

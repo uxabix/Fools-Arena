@@ -20,4 +20,7 @@ def asset_versions(_request):
         "asset_auth_js_v": _mtime(
             static_root / "accounts" / "static" / "accounts" / "js" / "auth_form.js"
         ),
+        "asset_lobby_js_v": _mtime(
+            static_root / "fools" / "static" / "fools" / "js" / "lobby_list.js"
+        ),
     }

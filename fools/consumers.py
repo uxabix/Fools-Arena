@@ -42,6 +42,31 @@ def user_in_game(user_id, game_id):
     return Game.objects.filter(id=game_id, players__user_id=user_id).exists()
 
 
+class LobbyListConsumer(AsyncJsonWebsocketConsumer):
+    """Stream public lobby-list changes to any signed-in user.
+
+    Unlike :class:`LobbyConsumer`, membership in a particular lobby is not
+    required. Payloads are the same public snapshots as the list API.
+    """
+
+    async def connect(self):
+        """Accept signed-in users onto the shared list group."""
+        user = self.scope["user"]
+        if isinstance(user, AnonymousUser) or not getattr(user, "is_authenticated", False):
+            await self.close(code=4401)
+            return
+        await self.channel_layer.group_add("lobby_list", self.channel_name)
+        await self.accept()
+
+    async def disconnect(self, code):
+        """Leave the list group when the socket closes."""
+        await self.channel_layer.group_discard("lobby_list", self.channel_name)
+
+    async def fools_event(self, event):
+        """Forward a list upsert or removal to the browser."""
+        await self.send_json(event["message"])
+
+
 class LobbyConsumer(AsyncJsonWebsocketConsumer):
     """Stream lobby-scoped events (chat, membership, fools start) to members."""
 

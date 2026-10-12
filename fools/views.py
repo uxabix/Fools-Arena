@@ -3,11 +3,30 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
+from fools.models import LobbyPlayer
+
 
 @login_required
 def lobby_list_page(request):
-    """Render the public lobby browser shell (data via fetch)."""
-    return render(request, "fools/lobby_list.html")
+    """Render the public lobby browser and the create-lobby form.
+
+    The list itself is loaded by the page script. The current lobby is
+    passed here so a private room, which is absent from that list, can
+    still offer a way back in.
+    """
+    membership = (
+        LobbyPlayer.objects.filter(
+            user=request.user,
+            status__in=["waiting", "ready", "playing"],
+        )
+        .select_related("lobby")
+        .first()
+    )
+    return render(
+        request,
+        "fools/lobby_list.html",
+        {"current_lobby": membership.lobby if membership else None},
+    )
 
 
 @login_required

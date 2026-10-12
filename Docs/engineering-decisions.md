@@ -36,9 +36,17 @@ Changing an email on the profile requires the current password. The new address 
 
 Changing a password from the profile does not ask for the current password. The button emails the same reset link as the public password-reset form, to the address already stored on the account. The new password is chosen on that link. An account with no email cannot start this until an address is added. The request uses the shared email limit, and a blocked request does not send mail.
 
+## Lobby list and creation
+
+The public list shows waiting lobbies that are not private and still have someone in them. A full lobby stays on the list and is marked as having no seats. A private lobby is left off the list. Joining it requires the password; the link alone is not enough, and the password is stored only as a hash. Creating or joining a lobby leaves every other lobby the player is still in. The list page asks before either action when the player is already in a lobby: they can cancel, return to that lobby, or continue.
+
+Signed-in users can subscribe to `ws/lobbies/` for list changes. That socket does not require membership in a lobby, and it only receives public waiting lobbies (or an id to remove). A lobby room socket still requires membership.
+
+`is_transferable` is always stored as false. Passing the attack to another player is not implemented, and the create form does not offer that rule. The list has no search or filters.
+
 ## Game and chat authority
 
-The browser is not trusted to decide a legal move. Attack, defense, and the other table actions are checked in `fools/services.py` (whose turn it is, the phase, and whether the card is a legal defense). Lobby actions check membership and ownership there as well. WebSocket connections are accepted only for the signed-in user, and only if that user is still in the lobby or seated in that match.
+The browser is not trusted to decide a legal move. Attack, defense, and the other table actions are checked in `fools/services.py` (whose turn it is, the phase, and whether the card is a legal defense). Lobby actions check membership and ownership there as well. A lobby-room or match WebSocket is accepted only for the signed-in user, and only if that user is still in that lobby or seated in that match. The public list socket is the exception: any signed-in user may listen, and private lobby contents are not sent on it.
 
 There is no separate anti-cheat layer beyond those server checks. Timing, collusion between seats, and automated play are not detected.
 

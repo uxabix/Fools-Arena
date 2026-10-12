@@ -103,12 +103,18 @@ class LobbyDetailAPI(APIView):
     def get(self, request, lobby_id):
         lobby = get_object_or_404(Lobby, id=lobby_id)
         if lobby.is_private:
-            if not lobby.players.filter(user=request.user).exclude(status="left").exists():
-                if lobby.owner_id != request.user.id:
-                    return Response(
-                        {"detail": "Not a member of this private lobby"},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
+            is_member = lobby.players.filter(user=request.user).exclude(status="left").exists()
+            if not is_member and lobby.owner_id != request.user.id:
+                return Response(
+                    {
+                        "detail": "Enter the password to join this private lobby.",
+                        "code": "password_required",
+                        "id": str(lobby.id),
+                        "name": lobby.name,
+                        "is_private": True,
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
         return Response(serialize_lobby(lobby))
 
 

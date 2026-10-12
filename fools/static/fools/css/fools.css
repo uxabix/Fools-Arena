@@ -26,6 +26,10 @@
   padding: 0 1rem 2.5rem;
 }
 
+.game-page [hidden] {
+  display: none !important;
+}
+
 .game-page.play-page {
   max-width: 72rem;
 }
@@ -297,6 +301,319 @@
   width: 1.1rem;
   height: 1.1rem;
   accent-color: var(--game-accent);
+}
+
+.lobby-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lobby-list-head .game-title {
+  margin: 0;
+}
+
+.lobby-lead {
+  margin: 0.75rem 0 1rem;
+  color: #d7dce3;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.lobby-status {
+  margin: 0;
+  color: #d7dce3;
+  font-size: 1rem;
+}
+
+.lobby-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.lobby-state[hidden],
+.lobby-create[hidden],
+.lobby-list[hidden],
+.lobby-status[hidden],
+#password-field[hidden],
+.lobby-invite[hidden],
+#private-join[hidden] {
+  display: none !important;
+}
+
+.lobby-state p {
+  margin: 0;
+  color: #f3f5f8;
+  line-height: 1.45;
+}
+
+.lobby-current p {
+  margin: 0 0 0.75rem;
+}
+
+.lobby-current__name {
+  overflow-wrap: anywhere;
+}
+
+.lobby-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lobby-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding: 0.9rem 1rem;
+  background: var(--game-bg);
+  border: 1px solid #9aa3b2;
+  border-radius: var(--game-radius-sm);
+  min-width: 0;
+}
+
+.lobby-row.is-current {
+  border-color: #f0d56a;
+  background: rgba(240, 213, 106, 0.08);
+}
+
+.lobby-row__body {
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.lobby-row__badge {
+  margin: 0 0 0.25rem;
+  color: #f0d56a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lobby-row__name {
+  margin: 0;
+  color: #f3f5f8;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.lobby-row__meta,
+.lobby-row__seats {
+  margin: 0.3rem 0 0;
+  color: #d7dce3;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.lobby-row__seats {
+  color: #ffcdd2;
+  font-weight: 700;
+}
+
+.lobby-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lobby-row__actions .game-btn {
+  min-height: 2.75rem;
+}
+
+.lobby-create {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.lobby-create[hidden] {
+  display: none !important;
+}
+
+.lobby-field__label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #f3f5f8;
+  font-weight: 600;
+}
+
+.lobby-field__error {
+  margin: 0.35rem 0 0;
+  color: #ffcdd2;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.lobby-field.is-invalid input,
+.lobby-field.is-invalid select {
+  border-color: #e57373;
+}
+
+.lobby-more {
+  align-self: start;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #9aa3b2;
+  border-radius: var(--game-radius-sm);
+  background: var(--game-bg);
+  padding: 0 0.85rem;
+}
+
+.lobby-more[open] {
+  width: min(100%, 28rem);
+  padding-bottom: 0.85rem;
+}
+
+.lobby-more summary {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  cursor: pointer;
+  color: #f3f5f8;
+  font-weight: 600;
+}
+
+.lobby-more summary:focus-visible {
+  outline: 2px solid #f0d56a;
+  outline-offset: 3px;
+}
+
+.lobby-create__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.lobby-create__actions .game-btn,
+#create-open,
+#lobby-refresh,
+.lobby-current .game-btn,
+.lobby-state .game-btn {
+  min-height: 2.75rem;
+}
+
+.lobby-invite {
+  margin-bottom: 1rem;
+}
+
+.lobby-invite p {
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+
+.lobby-invite__link {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.lobby-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  border: 1px solid #9aa3b2;
+  border-radius: var(--game-radius);
+  background: var(--game-surface);
+  color: #f3f5f8;
+  padding: 1.25rem 1.35rem;
+  box-shadow: var(--game-shadow);
+}
+
+.lobby-dialog::backdrop {
+  background: rgba(8, 10, 14, 0.72);
+}
+
+.lobby-dialog h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.2rem;
+}
+
+.lobby-dialog p {
+  margin: 0;
+  color: #d7dce3;
+  line-height: 1.45;
+}
+
+.lobby-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.lobby-dialog__actions .game-btn {
+  min-height: 2.75rem;
+}
+
+@media (min-width: 720px) {
+  .lobby-create {
+    grid-template-columns: minmax(0, 1fr) 9.5rem 12.5rem;
+    align-items: start;
+  }
+
+  .lobby-create .game-form__full {
+    grid-column: auto;
+  }
+
+  .lobby-field[data-field="name"] {
+    grid-column: 1;
+  }
+
+  .lobby-field[data-field="max_players"] {
+    grid-column: 2;
+  }
+
+  .lobby-field[data-field="card_count"] {
+    grid-column: 3;
+  }
+
+  .lobby-field[data-field="is_private"],
+  .lobby-field[data-field="password"],
+  #create-error,
+  .lobby-create__actions {
+    grid-column: 1 / -1;
+  }
+
+  .lobby-field[data-field="password"] {
+    max-width: 24rem;
+  }
+
+  .lobby-more {
+    grid-column: 1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 540px) {
+  .lobby-row__actions,
+  .lobby-create__actions,
+  .lobby-dialog__actions,
+  .lobby-current .game-btn,
+  .lobby-state .game-btn,
+  #create-open,
+  #lobby-refresh {
+    width: 100%;
+  }
+
+  .lobby-dialog__actions .game-btn {
+    flex: 1 1 100%;
+  }
+
+  .lobby-row__actions .game-btn,
+  .lobby-create__actions .game-btn {
+    flex: 1 1 100%;
+  }
 }
 
 /* Chat */
@@ -1151,6 +1468,42 @@ body.game-skin {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.game-form.lobby-create {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+@media (min-width: 720px) {
+  .game-form.lobby-create {
+    grid-template-columns: minmax(0, 1fr) 9.5rem 12.5rem;
+  }
+
+  .game-form.lobby-create .lobby-field[data-field="name"] {
+    grid-column: 1;
+  }
+
+  .game-form.lobby-create .lobby-field[data-field="max_players"] {
+    grid-column: 2;
+  }
+
+  .game-form.lobby-create .lobby-field[data-field="card_count"] {
+    grid-column: 3;
+  }
+
+  .game-form.lobby-create .lobby-field[data-field="is_private"],
+  .game-form.lobby-create .lobby-field[data-field="password"],
+  .game-form.lobby-create #create-error,
+  .game-form.lobby-create .lobby-create__actions {
+    grid-column: 1 / -1;
+  }
+
+  .game-form.lobby-create .lobby-more {
+    grid-column: 1;
+    justify-self: start;
+  }
 }
 
 .game-form--stacked .game-form__full {

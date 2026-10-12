@@ -94,3 +94,85 @@ class TestGameLobbyAPI:
         other = next(p for p in detail.data["players"] if p["user_id"] != str(test_user.id))
         assert me["hand"] is not None
         assert other["hand"] is None
+
+    def test_public_lobby_does_not_keep_a_password(self, api, test_user):
+        """A public lobby ignores a password and cannot turn transfer on."""
+        api.force_login(test_user)
+        response = api.post(
+            reverse("api-lobby-list"),
+            {
+                "name": "Public",
+                "is_private": False,
+                "password": "should-not-stick",
+                "is_transferable": True,
+                "card_count": 36,
+                "max_players": 4,
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["is_private"] is False
+        assert response.data["settings"]["is_transferable"] is False
+        from fools.models import Lobby
+        lobby = Lobby.objects.get(id=response.data["id"])
+        assert lobby.password_hash is None
+
+    def test_private_lobby_requires_a_password_field_error(self, api, test_user):
+        """A missing private password is reported on that field."""
+        api.force_login(test_user)
+        response = api.post(
+            reverse("api-lobby-list"),
+            {"name": "Secret", "is_private": True, "card_count": 36},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "password" in response.data
+        assert "Enter a password" in response.data["password"][0]
+
+    def test_private_lobby_link_asks_for_the_password(self, api, test_user, second_user):
+        """Someone with the link, but not the password, is not shown the room."""
+        api.force_login(test_user)
+        created = api.post(
+            reverse("api-lobby-list"),
+            {
+                "name": "Invite",
+                "is_private": True,
+                "password": "share-me",
+                "card_count": 36,
+            },
+            format="json",
+        )
+        assert created.status_code == status.HTTP_201_CREATED
+        lobby_id = created.data["id"]
+        api.force_login(second_user)
+        denied = api.get(reverse("api-lobby-detail", kwargs={"lobby_id": lobby_id}))
+        assert denied.status_code == status.HTTP_403_FORBIDDEN
+        assert denied.data["code"] == "password_required"
+        assert denied.data["name"] == "Invite"
+        assert "players" not in denied.data
+        wrong = api.post(
+            reverse("api-lobby-join", kwargs={"lobby_id": lobby_id}),
+            {"password": "nope"},
+            format="json",
+        )
+        assert wrong.status_code == status.HTTP_400_BAD_REQUEST
+        assert wrong.data["detail"] == "That password is incorrect."
+        joined = api.post(
+            reverse("api-lobby-join", kwargs={"lobby_id": lobby_id}),
+            {"password": "share-me"},
+            format="json",
+        )
+        assert joined.status_code == status.HTTP_200_OK
+        assert any(row["user_id"] == str(second_user.id) for row in joined.data["players"])
+
+    def test_lobby_list_page_hides_the_create_form(self, client, test_user):
+        """The list page names the lobby field and keeps creation closed."""
+        client.force_login(test_user)
+        html = client.get(reverse("fools-lobby-list-page")).content.decode()
+        assert 'type="text"' in html
+        assert "Transferable" not in html
+        assert 'id="create-form"' in html
+        assert "hidden" in html
+        assert "Create lobby" in html
+        assert "Refresh" in html
+        assert "Neighbors only" in html

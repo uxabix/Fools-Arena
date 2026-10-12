@@ -11,35 +11,69 @@ from rest_framework import serializers
 class LobbyCreateSerializer(serializers.Serializer):
     """Validate payload for :class:`fools.api_views.LobbyListCreateAPI` POST."""
 
-    name = serializers.CharField(max_length=100)
+    name = serializers.CharField(
+        max_length=100,
+        error_messages={
+            "required": "Enter a lobby name.",
+            "blank": "Enter a lobby name.",
+            "max_length": "Use 100 characters or fewer.",
+        },
+    )
     is_private = serializers.BooleanField(default=False)
     password = serializers.CharField(
-        max_length=128, required=False, allow_blank=True, write_only=True
+        max_length=128,
+        required=False,
+        allow_blank=True,
+        write_only=True,
+        error_messages={"max_length": "Use 128 characters or fewer."},
+    )
+    max_players = serializers.IntegerField(
+        min_value=2,
+        max_value=8,
+        default=4,
+        error_messages={
+            "invalid": "Enter a whole number of players.",
+            "min_value": "Use at least 2 players.",
+            "max_value": "Use 8 players or fewer.",
+        },
+    )
+    card_count = serializers.ChoiceField(
+        choices=[24, 36, 52],
+        default=36,
+        error_messages={
+            "invalid_choice": "Choose a deck of 24, 36, or 52 cards.",
+        },
+    )
+    is_transferable = serializers.BooleanField(default=False)
+    neighbor_throw_only = serializers.BooleanField(default=False)
+    allow_jokers = serializers.BooleanField(default=False)
+    turn_time_limit = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0
     )
 
     def validate(self, attrs):
-        """Require a non-empty password when ``is_private`` is true.
+        """Require a password only for a private lobby.
+
+        A public lobby drops any password so it is not stored. Transfer is
+        not implemented, so that flag is always stored as false.
 
         Args:
             attrs: Incoming validated fields.
 
         Returns:
-            The same dict, possibly normalized.
+            The same dict, normalized.
 
         Raises:
             serializers.ValidationError: When a private lobby lacks a password.
         """
         if attrs.get("is_private") and not (attrs.get("password") or "").strip():
             raise serializers.ValidationError(
-                {"password": "Password is required for a private lobby."}
+                {"password": "Enter a password for a private lobby."}
             )
+        if not attrs.get("is_private"):
+            attrs["password"] = ""
+        attrs["is_transferable"] = False
         return attrs
-    max_players = serializers.IntegerField(min_value=2, max_value=8, default=4)
-    card_count = serializers.ChoiceField(choices=[24, 36, 52], default=36)
-    is_transferable = serializers.BooleanField(default=False)
-    neighbor_throw_only = serializers.BooleanField(default=False)
-    allow_jokers = serializers.BooleanField(default=False)
-    turn_time_limit = serializers.IntegerField(required=False, allow_null=True, min_value=0)
 
 
 class LobbyJoinSerializer(serializers.Serializer):
