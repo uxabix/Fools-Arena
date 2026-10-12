@@ -62,7 +62,7 @@ class LobbyConsumer(AsyncJsonWebsocketConsumer):
         """Leave the lobby group when the socket closes."""
         await self.channel_layer.group_discard(f"lobby_{self.lobby_id}", self.channel_name)
 
-    async def game_event(self, event):
+    async def fools_event(self, event):
         """Forward channel-layer messages to the browser as JSON."""
         await self.send_json(event["message"])
 
@@ -87,6 +87,6 @@ class GameConsumer(AsyncJsonWebsocketConsumer):
         """Detach from the game broadcast group."""
         await self.channel_layer.group_discard(f"game_{self.game_id}", self.channel_name)
 
-    async def game_event(self, event):
+    async def fools_event(self, event):
         """Push server events (moves, phase changes) to the client."""
         await self.send_json(event["message"])

@@ -80,9 +80,9 @@ class User(AbstractUser):
         try:
             game_player = GamePlayer.objects.select_related('fools').get(
                 user=self,
-                game__status='in_progress'
+                fools__status='in_progress'
             )
-            return game_player.game
+            return game_player.fools
         except GamePlayer.DoesNotExist:
             return None
 

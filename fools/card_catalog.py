@@ -51,13 +51,13 @@ def _reassign_card_pk(old_id, new_id) -> None:
     Game.objects.filter(trump_card_id=old_id).update(trump_card_id=new_id)
 
     for gd in GameDeck.objects.filter(card_id=old_id).order_by("id"):
-        if GameDeck.objects.filter(game_id=gd.game_id, card_id=new_id).exclude(pk=gd.pk).exists():
+        if GameDeck.objects.filter(fools_id=gd.fools_id, card_id=new_id).exclude(pk=gd.pk).exists():
             gd.delete()
         else:
             GameDeck.objects.filter(pk=gd.pk).update(card_id=new_id)
 
     for ph in PlayerHand.objects.filter(card_id=old_id).order_by("id"):
-        if PlayerHand.objects.filter(game_id=ph.game_id, player_id=ph.player_id, card_id=new_id).exclude(
+        if PlayerHand.objects.filter(fools_id=ph.fools_id, player_id=ph.player_id, card_id=new_id).exclude(
             pk=ph.pk
         ).exists():
             ph.delete()
@@ -65,19 +65,19 @@ def _reassign_card_pk(old_id, new_id) -> None:
             PlayerHand.objects.filter(pk=ph.pk).update(card_id=new_id)
 
     for tc in TableCard.objects.filter(attack_card_id=old_id).order_by("id"):
-        if TableCard.objects.filter(game_id=tc.game_id, attack_card_id=new_id).exclude(pk=tc.pk).exists():
+        if TableCard.objects.filter(fools_id=tc.fools_id, attack_card_id=new_id).exclude(pk=tc.pk).exists():
             tc.delete()
         else:
             TableCard.objects.filter(pk=tc.pk).update(attack_card_id=new_id)
 
     for tc in TableCard.objects.filter(defense_card_id=old_id).order_by("id"):
-        if TableCard.objects.filter(game_id=tc.game_id, defense_card_id=new_id).exclude(pk=tc.pk).exists():
+        if TableCard.objects.filter(fools_id=tc.fools_id, defense_card_id=new_id).exclude(pk=tc.pk).exists():
             tc.delete()
         else:
             TableCard.objects.filter(pk=tc.pk).update(defense_card_id=new_id)
 
     for dp in DiscardPile.objects.filter(card_id=old_id).order_by("id"):
-        if DiscardPile.objects.filter(game_id=dp.game_id, card_id=new_id).exclude(pk=dp.pk).exists():
+        if DiscardPile.objects.filter(fools_id=dp.fools_id, card_id=new_id).exclude(pk=dp.pk).exists():
             dp.delete()
         else:
             DiscardPile.objects.filter(pk=dp.pk).update(card_id=new_id)

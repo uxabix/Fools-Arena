@@ -314,7 +314,12 @@ class GamePlayer(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='players')
+    fools = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        related_name='players',
+        db_column='game_id',
+    )
     user = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
     seat_position = models.IntegerField()
     cards_remaining = models.IntegerField()
@@ -349,12 +354,12 @@ class GamePlayer(models.Model):
         Returns:
             QuerySet: PlayerHand objects representing cards in hand.
         """
-        return PlayerHand.objects.filter(game=self.game, player=self.user)
+        return PlayerHand.objects.filter(fools=self.fools, player=self.user)
 
     class Meta:
         verbose_name = 'Game Player'
         verbose_name_plural = 'Game Players'
-        unique_together = ['game', 'user']
+        unique_together = ['fools', 'user']
         ordering = ['seat_position']
 
 class Card(models.Model):
@@ -623,7 +628,7 @@ class GameDeck(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    fools = models.ForeignKey(Game, on_delete=models.CASCADE, db_column='game_id')
     card = models.ForeignKey(Card, on_delete=models.CASCADE)
     position = models.IntegerField()
 
@@ -633,7 +638,7 @@ class GameDeck(models.Model):
         Returns:
             str: Card info with position in deck.
         """
-        return f"{self.card} at position {self.position} in {self.game}"
+        return f"{self.card} at position {self.position} in {self.fools}"
 
     @classmethod
     def get_top_card(cls, game):
@@ -645,7 +650,7 @@ class GameDeck(models.Model):
         Returns:
             GameDeck: The deck entry with the lowest position, or None if deck is empty.
         """
-        return cls.objects.filter(game=game).order_by('position').first()
+        return cls.objects.filter(fools=game).order_by('position').first()
 
     @classmethod
     def draw_card(cls, game):
@@ -671,14 +676,14 @@ class GameDeck(models.Model):
             bool: True if no other cards have higher positions, False otherwise.
         """
         return not GameDeck.objects.filter(
-            game=self.game,
+            fools=self.fools,
             position__gt=self.position
         ).exists()
 
     class Meta:
         verbose_name = 'Game Deck Card'
         verbose_name_plural = 'Game Deck Cards'
-        unique_together = ['game', 'position']
+        unique_together = ['fools', 'position']
         ordering = ['position']
 
 class PlayerHand(models.Model):
@@ -690,7 +695,7 @@ class PlayerHand(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    fools = models.ForeignKey(Game, on_delete=models.CASCADE, db_column='game_id')
     player = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
     card = models.ForeignKey(Card, on_delete=models.CASCADE)
     order_in_hand = models.IntegerField(null=True, blank=True)
@@ -701,7 +706,7 @@ class PlayerHand(models.Model):
         Returns:
             str: Player and card information.
         """
-        return f"{self.player.username} holds {self.card} in {self.game}"
+        return f"{self.player.username} holds {self.card} in {self.fools}"
 
     @classmethod
     def get_player_hand(cls, game, player):
@@ -715,7 +720,7 @@ class PlayerHand(models.Model):
             QuerySet: PlayerHand objects ordered by order_in_hand.
         """
         return cls.objects.filter(
-            game=game,
+            fools=game,
             player=player
         ).order_by('order_in_hand')
 
@@ -730,7 +735,7 @@ class PlayerHand(models.Model):
         Returns:
             int: Number of cards in the player's hand.
         """
-        return cls.objects.filter(game=game, player=player).count()
+        return cls.objects.filter(fools=game, player=player).count()
 
     def remove_from_hand(self):
         """Remove this card from the player's hand.
@@ -738,7 +743,7 @@ class PlayerHand(models.Model):
         Deletes the PlayerHand record and updates the GamePlayer's
         cards_remaining counter.
         """
-        game_player = GamePlayer.objects.get(game=self.game, user=self.player)
+        game_player = GamePlayer.objects.get(fools=self.fools, user=self.player)
         game_player.cards_remaining = max(0, game_player.cards_remaining - 1)
         game_player.save(update_fields=['cards_remaining'])
         self.delete()
@@ -746,7 +751,7 @@ class PlayerHand(models.Model):
     class Meta:
         verbose_name = 'Player Hand Card'
         verbose_name_plural = 'Player Hand Cards'
-        unique_together = ['game', 'player', 'card']
+        unique_together = ['fools', 'player', 'card']
         ordering = ['order_in_hand']
 
 class TableCard(models.Model):
@@ -759,7 +764,7 @@ class TableCard(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    fools = models.ForeignKey(Game, on_delete=models.CASCADE, db_column='game_id')
     attack_card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='attack_card')
     defense_card = models.ForeignKey(Card, on_delete=models.SET_NULL, null=True, blank=True,
                                      related_name='defense_card')
@@ -827,7 +832,7 @@ class DiscardPile(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    fools = models.ForeignKey(Game, on_delete=models.CASCADE, db_column='game_id')
     card = models.ForeignKey(Card, on_delete=models.CASCADE)
     position = models.IntegerField(null=True, blank=True)
 
@@ -851,12 +856,12 @@ class DiscardPile(models.Model):
         Returns:
             list: List of created DiscardPile objects.
         """
-        last_position = cls.objects.filter(game=game).count()
+        last_position = cls.objects.filter(fools=game).count()
         discard_entries = []
         for i, card in enumerate(cards):
             discard_entries.append(
                 cls.objects.create(
-                    game=game,
+                    fools=game,
                     card=card,
                     position=last_position + i + 1,
                 )
@@ -873,7 +878,12 @@ class Turn(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='turns')
+    fools = models.ForeignKey(
+        Game,
+        on_delete=models.CASCADE,
+        related_name='turns',
+        db_column='game_id',
+    )
     player = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
     turn_number = models.IntegerField()
 
@@ -883,7 +893,7 @@ class Turn(models.Model):
         Returns:
             str: Turn number and player information.
         """
-        return f"Turn {self.turn_number}: {self.player.username} in {self.game}"
+        return f"Turn {self.turn_number}: {self.player.username} in {self.fools}"
 
     def get_moves(self):
         """Get all moves made during this turn.
@@ -911,7 +921,7 @@ class Turn(models.Model):
         Returns:
             Turn: The turn with the highest turn_number, or None if no turns exist.
         """
-        return cls.objects.filter(game=game).order_by('-turn_number').first()
+        return cls.objects.filter(fools=game).order_by('-turn_number').first()
 
     @classmethod
     def create_next_turn(cls, game, player):
@@ -924,9 +934,9 @@ class Turn(models.Model):
         Returns:
             Turn: The newly created turn object.
         """
-        next_number = cls.objects.filter(game=game).count() + 1
+        next_number = cls.objects.filter(fools=game).count() + 1
         return cls.objects.create(
-            game=game,
+            fools=game,
             player=player,
             turn_number=next_number
         )
@@ -934,7 +944,7 @@ class Turn(models.Model):
     class Meta:
         verbose_name = 'Turn'
         verbose_name_plural = 'Turns'
-        unique_together = ['game', 'turn_number']
+        unique_together = ['fools', 'turn_number']
         ordering = ['turn_number']
 
 class Move(models.Model):

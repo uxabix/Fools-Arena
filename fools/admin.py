@@ -1205,7 +1205,7 @@ class GamePlayerAdmin(admin.ModelAdmin):
 
     search_fields = (
         'user__username',
-        'game__lobby__name',
+        'fools__lobby__name',
     )
 
     readonly_fields = ('id',)
@@ -1235,8 +1235,8 @@ class GamePlayerAdmin(admin.ModelAdmin):
         Returns:
             str: HTML formatted link to fools admin page.
         """
-        game_url = reverse('admin:fools_game_change', args=[obj.game.pk])
-        short_id = str(obj.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.fools.pk])
+        short_id = str(obj.fools.id)[:8]
         return format_html('<a href="{}" style="color: #28a745;">🎮 Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"
@@ -1926,13 +1926,13 @@ class GameDeckAdmin(admin.ModelAdmin):
     """
     list_display = ('card', 'game_link', 'position', 'is_last_card')
     list_filter = (('fools', admin.RelatedOnlyFieldListFilter),)
-    search_fields = ('card__rank__name', 'card__suit__name', 'game__lobby__name')
+    search_fields = ('card__rank__name', 'card__suit__name', 'fools__lobby__name')
     readonly_fields = ('id',)
     ordering = ('fools', 'position')
 
     def game_link(self, obj):
-        game_url = reverse('admin:fools_game_change', args=[obj.game.pk])
-        short_id = str(obj.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.fools.pk])
+        short_id = str(obj.fools.id)[:8]
         return format_html('<a href="{}">Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"
@@ -1954,8 +1954,8 @@ class PlayerHandAdmin(admin.ModelAdmin):
     ordering = ('fools', 'player', 'order_in_hand')
 
     def game_link(self, obj):
-        game_url = reverse('admin:fools_game_change', args=[obj.game.pk])
-        short_id = str(obj.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.fools.pk])
+        short_id = str(obj.fools.id)[:8]
         return format_html('<a href="{}">Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"
@@ -1972,13 +1972,13 @@ class TableCardAdmin(admin.ModelAdmin):
         ('fools', admin.RelatedOnlyFieldListFilter),
         'defense_card',
     )
-    search_fields = ('attack_card__rank__name', 'defense_card__rank__name', 'game__lobby__name')
+    search_fields = ('attack_card__rank__name', 'defense_card__rank__name', 'fools__lobby__name')
     readonly_fields = ('id',)
     ordering = ('fools', 'id')
 
     def game_link(self, obj):
-        game_url = reverse('admin:fools_game_change', args=[obj.game.pk])
-        short_id = str(obj.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.fools.pk])
+        short_id = str(obj.fools.id)[:8]
         return format_html('<a href="{}">Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"
@@ -2000,13 +2000,13 @@ class DiscardPileAdmin(admin.ModelAdmin):
     """
     list_display = ('card', 'game_link', 'position')
     list_filter = (('fools', admin.RelatedOnlyFieldListFilter),)
-    search_fields = ('card__rank__name', 'card__suit__name', 'game__lobby__name')
+    search_fields = ('card__rank__name', 'card__suit__name', 'fools__lobby__name')
     readonly_fields = ('id',)
     ordering = ('fools', 'position')
 
     def game_link(self, obj):
-        game_url = reverse('admin:fools_game_change', args=[obj.game.pk])
-        short_id = str(obj.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.fools.pk])
+        short_id = str(obj.fools.id)[:8]
         return format_html('<a href="{}">Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"
@@ -2023,13 +2023,13 @@ class TurnAdmin(admin.ModelAdmin):
         ('fools', admin.RelatedOnlyFieldListFilter),
         ('player', admin.RelatedOnlyFieldListFilter),
     )
-    search_fields = ('player__username', 'game__lobby__name')
+    search_fields = ('player__username', 'fools__lobby__name')
     readonly_fields = ('id', 'move_count')
     ordering = ('fools', 'turn_number')
 
     def game_link(self, obj):
-        game_url = reverse('admin:fools_game_change', args=[obj.game.pk])
-        short_id = str(obj.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.fools.pk])
+        short_id = str(obj.fools.id)[:8]
         return format_html('<a href="{}">Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"
@@ -2061,7 +2061,7 @@ class MoveAdmin(admin.ModelAdmin):
         ('turn__game', admin.RelatedOnlyFieldListFilter),
         ('turn__player', admin.RelatedOnlyFieldListFilter),
     )
-    search_fields = ('turn__player__username', 'turn__game__lobby__name')
+    search_fields = ('turn__player__username', 'turn__fools__lobby__name')
     readonly_fields = ('id', 'created_at', 'player_link', 'game_link', 'turn_number')
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
@@ -2096,8 +2096,8 @@ class MoveAdmin(admin.ModelAdmin):
     player_link.short_description = "Player"
 
     def game_link(self, obj):
-        game_url = reverse('admin:fools_game_change', args=[obj.turn.game.pk])
-        short_id = str(obj.turn.game.id)[:8]
+        game_url = reverse('admin:fools_game_change', args=[obj.turn.fools.pk])
+        short_id = str(obj.turn.fools.id)[:8]
         return format_html('<a href="{}">🎮 Game {}</a>', game_url, short_id)
 
     game_link.short_description = "Game"

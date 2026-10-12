@@ -160,3 +160,27 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "accounts": {
+            "format": "{levelname} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "accounts_console": {
+            "class": "logging.StreamHandler",
+            "formatter": "accounts",
+        },
+    },
+    "loggers": {
+        "accounts": {
+            "handlers": ["accounts_console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

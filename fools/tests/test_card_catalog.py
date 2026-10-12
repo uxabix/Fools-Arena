@@ -23,9 +23,9 @@ def test_reassign_merges_duplicate_hand_rows_without_unique_violation(
     lobby = create_lobby(test_user, "merge-hand", is_private=False)
     join_lobby(lobby, second_user)
     game = Game.objects.create(lobby=lobby, trump_card=c1, status="in_progress")
-    GamePlayer.objects.create(game=game, user=test_user, seat_position=1, cards_remaining=2)
-    PlayerHand.objects.create(game=game, player=test_user, card=c1, order_in_hand=1)
-    PlayerHand.objects.create(game=game, player=test_user, card=c2, order_in_hand=2)
+    GamePlayer.objects.create(fools=game, user=test_user, seat_position=1, cards_remaining=2)
+    PlayerHand.objects.create(fools=game, player=test_user, card=c1, order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=test_user, card=c2, order_in_hand=2)
     _reassign_card_pk(c2.pk, c1.pk)
-    assert PlayerHand.objects.filter(game=game, player=test_user, card=c1).count() == 1
+    assert PlayerHand.objects.filter(fools=game, player=test_user, card=c1).count() == 1
     assert not Card.objects.filter(pk=c2.pk).exists()

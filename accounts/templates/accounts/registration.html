@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Register — Fools Arena{% endblock %}
 
@@ -6,20 +7,23 @@
 <div class="game-page game-page--narrow">
   <section class="game-panel game-panel--auth">
     <h1 class="game-title">Create account</h1>
-    <p class="game-lead">Pick a username and password to enter the arena.</p>
+    <p class="game-lead">Choose a username, email, and password to enter the arena.</p>
 
-    <form method="post" class="game-form game-form--stacked" novalidate>
+    <form method="post" class="game-form game-form--stacked auth-form" data-auth-form="register" data-password-min="{{ password_min_length|default:8 }}" data-password-max="{{ password_max_length|default:128 }}" novalidate>
       {% csrf_token %}
       {% if form.non_field_errors %}
-      <div class="form-errors game-form__full" role="alert">
+      <div class="form-errors auth-form__banner" role="alert">
         {% for error in form.non_field_errors %}
-        <p>{{ error }}</p>
+        <p><span class="field-error__icon" aria-hidden="true">⚠</span> {{ error }}</p>
         {% endfor %}
       </div>
       {% endif %}
-      {% include "accounts/includes/form_fields.html" with form=form %}
-      <div class="game-form__full">
-        <button type="submit" class="game-btn game-btn--primary game-btn--block">Register</button>
+      {% include "accounts/includes/auth_fields.html" %}
+      <div class="auth-form__actions">
+        <button type="submit" class="game-btn game-btn--primary game-btn--block auth-submit" data-loading-label="Creating account…">
+          <span class="auth-submit__spinner" aria-hidden="true"></span>
+          <span class="auth-submit__label">Create account</span>
+        </button>
       </div>
     </form>
 
@@ -28,4 +32,8 @@
     </p>
   </section>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/auth_form.js' %}?v={{ asset_auth_js_v }}"></script>
 {% endblock %}

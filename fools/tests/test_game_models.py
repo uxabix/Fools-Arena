@@ -57,7 +57,7 @@ class TestGameModel:
 
         # Add first player
         GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -66,7 +66,7 @@ class TestGameModel:
 
         # Add second player
         GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=second_user,
             seat_position=2,
             cards_remaining=6
@@ -84,14 +84,14 @@ class TestGameModel:
         is empty. All other players are considered winners.
         """
         player1 = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=0
         )
 
         player2 = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=second_user,
             seat_position=2,
             cards_remaining=3
@@ -143,13 +143,13 @@ class TestGamePlayerModel:
     def test_game_player_creation(self, basic_game, test_user):
         """Test that GamePlayer instances are created correctly."""
         game_player = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
         )
 
-        assert game_player.game == basic_game
+        assert game_player.fools == basic_game
         assert game_player.user == test_user
         assert game_player.seat_position == 1
         assert game_player.cards_remaining == 6
@@ -157,7 +157,7 @@ class TestGamePlayerModel:
     def test_game_player_str_representation(self, basic_game, test_user):
         """Test string representation shows username, card count, and position."""
         game_player = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -169,7 +169,7 @@ class TestGamePlayerModel:
     def test_has_cards_method(self, basic_game, test_user):
         """Test has_cards() returns True when player has cards remaining."""
         game_player = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -183,7 +183,7 @@ class TestGamePlayerModel:
     def test_is_eliminated_method(self, basic_game, test_user):
         """Test is_eliminated() returns True when player has no cards left."""
         game_player = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -197,7 +197,7 @@ class TestGamePlayerModel:
     def test_get_hand_cards_method(self, basic_game, test_user, card_suits, card_ranks):
         """Test get_hand_cards() returns all cards in player's hand."""
         game_player = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -209,7 +209,7 @@ class TestGamePlayerModel:
         card = Card.objects.create(suit=hearts, rank=seven)
 
         PlayerHand.objects.create(
-            game=basic_game,
+            fools=basic_game,
             player=test_user,
             card=card,
             order_in_hand=1
@@ -226,7 +226,7 @@ class TestGamePlayerModel:
         The database enforces uniqueness on (fools, user) combination.
         """
         GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -235,7 +235,7 @@ class TestGamePlayerModel:
         # Attempting to create duplicate should fail
         with pytest.raises(IntegrityError):
             GamePlayer.objects.create(
-                game=basic_game,
+                fools=basic_game,
                 user=test_user,
                 seat_position=2,
                 cards_remaining=6
@@ -252,27 +252,27 @@ class TestGamePlayerModel:
 
         # Create players in non-sequential order
         player2 = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=user2,
             seat_position=3,
             cards_remaining=6
         )
 
         player3 = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=user3,
             seat_position=2,
             cards_remaining=6
         )
 
         player1 = GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=user1,
             seat_position=1,
             cards_remaining=6
         )
 
-        players = list(GamePlayer.objects.filter(game=basic_game))
+        players = list(GamePlayer.objects.filter(fools=basic_game))
 
         # Should be sorted by seat position
         assert players[0].seat_position == 1

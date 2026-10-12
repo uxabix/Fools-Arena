@@ -1,0 +1,50 @@
+{% for field in form %}
+<div class="auth-field game-form__full{% if field.errors %} is-invalid{% endif %}" data-field="{{ field.name }}">
+  <label class="auth-field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {% if field.field.widget.input_type == "password" %}
+  <div class="auth-field__control">
+    {{ field }}
+    <button type="button" class="auth-field__reveal" aria-controls="{{ field.auto_id }}" aria-pressed="false" aria-label="Show password">
+      <svg data-icon="show" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path fill="none" stroke="currentColor" stroke-width="2" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
+        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>
+      </svg>
+      <svg data-icon="hide" hidden viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path fill="none" stroke="currentColor" stroke-width="2" d="M3 3l18 18M10.6 6.1A11 11 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-4.1 4.6M6.7 6.7C3.7 8.5 2 12 2 12s3.5 7 10 7a10 10 0 0 0 4.2-.9"></path>
+      </svg>
+    </button>
+  </div>
+  {% else %}
+  {{ field }}
+  {% endif %}
+  <div class="auth-field__feedback" id="{{ field.auto_id }}-feedback">{% for error in field.errors %}<p class="field-error" role="alert"><span class="field-error__icon" aria-hidden="true">⚠</span><span>{{ error }}</span></p>{% endfor %}</div>
+  {% if field.help_text %}
+  <p class="field-hint" id="{{ field.auto_id }}-hint">{{ field.help_text }}</p>
+  {% endif %}
+  {% if field.name == "password1" %}
+  <ul class="auth-rules" id="password-rules">
+    <li class="auth-rules__item" data-rule="length" data-state="idle">
+      <span class="auth-rules__mark" aria-hidden="true">○</span>
+      <span class="auth-rules__text">At least {{ password_min_length|default:8 }} characters</span>
+      <span class="visually-hidden auth-rules__status">Not checked yet</span>
+    </li>
+    <li class="auth-rules__item" data-rule="numeric" data-state="idle">
+      <span class="auth-rules__mark" aria-hidden="true">○</span>
+      <span class="auth-rules__text">Not only numbers</span>
+      <span class="visually-hidden auth-rules__status">Not checked yet</span>
+    </li>
+    <li class="auth-rules__item" data-rule="similar" data-state="idle">
+      <span class="auth-rules__mark" aria-hidden="true">○</span>
+      <span class="auth-rules__text">Not too similar to your username or email</span>
+      <span class="visually-hidden auth-rules__status">Not checked yet</span>
+    </li>
+    <li class="auth-rules__item" data-rule="common" data-state="pending">
+      <span class="auth-rules__mark" aria-hidden="true">○</span>
+      <span class="auth-rules__text">Not a common password</span>
+      <span class="auth-rules__note" aria-hidden="true">Checked when you submit</span>
+      <span class="visually-hidden auth-rules__status">Checked when you submit</span>
+    </li>
+  </ul>
+  {% endif %}
+</div>
+{% endfor %}

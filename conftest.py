@@ -292,7 +292,7 @@ def game_player_factory(db):
 
     def create_game_player(game, user, seat_position, cards_remaining=6):
         return GamePlayer.objects.create(
-            game=game,
+            fools=game,
             user=user,
             seat_position=seat_position,
             cards_remaining=cards_remaining

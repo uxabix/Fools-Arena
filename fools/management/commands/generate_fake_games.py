@@ -407,19 +407,19 @@ class Command(BaseCommand):
 
         # Persist deck into GameDeck model
         for pos, card in enumerate(deck_cards, start=1):
-            GameDeck.objects.create(game=game, card=card, position=pos)
+            GameDeck.objects.create(fools=game, card=card, position=pos)
 
         # Create LobbyPlayer and GamePlayer entries
         game_players: List[GamePlayer] = []
         for seat in range(1, players + 1):
             user = next(user_iter)
             LobbyPlayer.objects.create(lobby=lobby, user=user, status="playing")
-            gp = GamePlayer.objects.create(game=game, user=user, seat_position=seat, cards_remaining=0)
+            gp = GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=0)
             game_players.append(gp)
 
         # Helper to pop top GameDeck entry (DB-backed)
         def pop_top_db_card(game_obj: Game) -> Optional[Card]:
-            top_qs = GameDeck.objects.filter(game=game_obj).order_by("position")[:1]
+            top_qs = GameDeck.objects.filter(fools=game_obj).order_by("position")[:1]
             if not top_qs:
                 return None
             gd = top_qs[0]
@@ -434,7 +434,7 @@ class Command(BaseCommand):
                 card = pop_top_db_card(game)
                 if not card:
                     break
-                PlayerHand.objects.create(game=game, player=gp.user, card=card, order_in_hand=idx + 1)
+                PlayerHand.objects.create(fools=game, player=gp.user, card=card, order_in_hand=idx + 1)
                 gp.cards_remaining += 1
             gp.save(update_fields=["cards_remaining"])
 
@@ -445,7 +445,7 @@ class Command(BaseCommand):
 
         def find_defense_card_for_player(defender_user, attack_card):
             """Return a PlayerHand instance that can defend or None."""
-            ph_qs = PlayerHand.objects.filter(game=game, player=defender_user)
+            ph_qs = PlayerHand.objects.filter(fools=game, player=defender_user)
             for ph in ph_qs:
                 try:
                     if ph.card.can_beat(attack_card, game.get_trump_suit()):
@@ -458,9 +458,9 @@ class Command(BaseCommand):
             turn_counter += 1
             attacker_gp = game_players[current_attacker_index % len(game_players)]
             attacker_user = attacker_gp.user
-            turn = Turn.objects.create(game=game, player=attacker_user, turn_number=turn_counter)
+            turn = Turn.objects.create(fools=game, player=attacker_user, turn_number=turn_counter)
 
-            attacker_hand = list(PlayerHand.objects.filter(game=game, player=attacker_user).order_by("order_in_hand"))
+            attacker_hand = list(PlayerHand.objects.filter(fools=game, player=attacker_user).order_by("order_in_hand"))
             if not attacker_hand:
                 current_attacker_index += 1
                 continue
@@ -471,7 +471,7 @@ class Command(BaseCommand):
             attacker_gp.cards_remaining = max(0, attacker_gp.cards_remaining - 1)
             attacker_gp.save(update_fields=["cards_remaining"])
 
-            table_card = TableCard.objects.create(game=game, attack_card=attack_card)
+            table_card = TableCard.objects.create(fools=game, attack_card=attack_card)
             Move.objects.create(turn=turn, table_card=table_card, action_type="attack", created_at=timezone.now())
 
             defender_index = (current_attacker_index + 1) % len(game_players)
@@ -489,13 +489,13 @@ class Command(BaseCommand):
 
                 Move.objects.create(turn=turn, table_card=table_card, action_type="defend", created_at=timezone.now())
 
-                DiscardPile.objects.create(game=game, card=attack_card, position=discard_position)
+                DiscardPile.objects.create(fools=game, card=attack_card, position=discard_position)
                 discard_position += 1
-                DiscardPile.objects.create(game=game, card=defense_card, position=discard_position)
+                DiscardPile.objects.create(fools=game, card=defense_card, position=discard_position)
                 discard_position += 1
             else:
                 Move.objects.create(turn=turn, table_card=table_card, action_type="pickup", created_at=timezone.now())
-                PlayerHand.objects.create(game=game, player=defender_user, card=attack_card,
+                PlayerHand.objects.create(fools=game, player=defender_user, card=attack_card,
                                           order_in_hand=defender_gp.cards_remaining + 1)
                 defender_gp.cards_remaining += 1
                 defender_gp.save(update_fields=["cards_remaining"])
@@ -506,7 +506,7 @@ class Command(BaseCommand):
                     card = pop_top_db_card(game)
                     if not card:
                         break
-                    PlayerHand.objects.create(game=game, player=gp.user, card=card,
+                    PlayerHand.objects.create(fools=game, player=gp.user, card=card,
                                               order_in_hand=gp.cards_remaining + 1)
                     gp.cards_remaining += 1
                     gp.save(update_fields=["cards_remaining"])

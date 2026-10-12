@@ -19,17 +19,17 @@ class TestTurnModel:
 
     def test_turn_creation(self, basic_game, test_user):
         """Tests that Turn instances are created correctly."""
-        turn = Turn.objects.create(game=basic_game, player=test_user, turn_number=1)
-        assert turn.game == basic_game
+        turn = Turn.objects.create(fools=basic_game, player=test_user, turn_number=1)
+        assert turn.fools == basic_game
         assert turn.player == test_user
         assert turn.turn_number == 1
 
     def test_get_current_turn(self, basic_game, test_user, second_user):
         """Tests get_current_turn() returns the most recent turn for a game."""
-        turn1 = Turn.objects.create(game=basic_game, player=test_user, turn_number=1)
+        turn1 = Turn.objects.create(fools=basic_game, player=test_user, turn_number=1)
         assert Turn.get_current_turn(basic_game) == turn1
 
-        turn2 = Turn.objects.create(game=basic_game, player=second_user, turn_number=2)
+        turn2 = Turn.objects.create(fools=basic_game, player=second_user, turn_number=2)
         assert Turn.get_current_turn(basic_game) == turn2
 
     def test_get_current_turn_no_turns(self, basic_game):
@@ -43,12 +43,12 @@ class TestTurnModel:
         The new turn should have a turn_number equal to the previous turn's
         number plus one.
         """
-        Turn.objects.create(game=basic_game, player=test_user, turn_number=1)
+        Turn.objects.create(fools=basic_game, player=test_user, turn_number=1)
         next_turn = Turn.create_next_turn(basic_game, second_user)
 
         assert next_turn.turn_number == 2
         assert next_turn.player == second_user
-        assert next_turn.game == basic_game
+        assert next_turn.fools == basic_game
 
     def test_unique_together_constraint(self, basic_game, test_user, second_user):
         """
@@ -56,9 +56,9 @@ class TestTurnModel:
 
         Each fools can only have one turn with a specific turn_number.
         """
-        Turn.objects.create(game=basic_game, player=test_user, turn_number=1)
+        Turn.objects.create(fools=basic_game, player=test_user, turn_number=1)
         with pytest.raises(IntegrityError):
-            Turn.objects.create(game=basic_game, player=second_user, turn_number=1)
+            Turn.objects.create(fools=basic_game, player=second_user, turn_number=1)
 
 
 @pytest.mark.django_db
@@ -71,9 +71,9 @@ class TestMoveModel:
     @pytest.fixture
     def attack_move(self, basic_game, test_user, basic_cards):
         """Fixture for creating a sample attack move."""
-        turn = Turn.objects.create(game=basic_game, player=test_user, turn_number=1)
+        turn = Turn.objects.create(fools=basic_game, player=test_user, turn_number=1)
         table_card = TableCard.objects.create(
-            game=basic_game, attack_card=basic_cards['ace_hearts']
+            fools=basic_game, attack_card=basic_cards['ace_hearts']
         )
         return Move.objects.create(
             turn=turn, table_card=table_card, action_type='attack'

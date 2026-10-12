@@ -98,7 +98,7 @@ def _save_rs(game: Game, **updates):
 
 def _refresh_card_counts(game: Game):
     for gp in game.players.all():
-        n = PlayerHand.objects.filter(game=game, player=gp.user).count()
+        n = PlayerHand.objects.filter(fools=game, player=gp.user).count()
         if gp.cards_remaining != n:
             gp.cards_remaining = n
             gp.save(update_fields=["cards_remaining"])
@@ -159,7 +159,7 @@ def _pick_first_attacker(game: Game, trump_suit_id) -> UUID:
     best: tuple[int, int, UUID] | None = None
     for gp in _player_circle(game):
         trumps = (
-            PlayerHand.objects.filter(game=game, player=gp.user, card__suit_id=trump_suit_id)
+            PlayerHand.objects.filter(fools=game, player=gp.user, card__suit_id=trump_suit_id)
             .select_related("card__rank")
         )
         for ph in trumps:
@@ -174,7 +174,7 @@ def _pick_first_attacker(game: Game, trump_suit_id) -> UUID:
 
 def _draw_for_player(game: Game, user: User, target_hand: int = 6):
     while True:
-        gp = GamePlayer.objects.get(game=game, user=user)
+        gp = GamePlayer.objects.get(fools=game, user=user)
         if gp.cards_remaining >= target_hand:
             break
         entry = GameDeck.get_top_card(game)
@@ -182,12 +182,12 @@ def _draw_for_player(game: Game, user: User, target_hand: int = 6):
             break
         card = entry.card
         entry.delete()
-        max_order = PlayerHand.objects.filter(game=game, player=user).aggregate(
+        max_order = PlayerHand.objects.filter(fools=game, player=user).aggregate(
             m=Max("order_in_hand")
         )["m"]
         next_order = (max_order or 0) + 1
         PlayerHand.objects.create(
-            game=game,
+            fools=game,
             player=user,
             card=card,
             order_in_hand=next_order,
@@ -208,7 +208,7 @@ def _draw_round_after_discard(game: Game, start_user_id: UUID):
 def _maybe_finish_game(game: Game):
     if game.status != "in_progress":
         return
-    deck_empty = not GameDeck.objects.filter(game=game).exists()
+    deck_empty = not GameDeck.objects.filter(fools=game).exists()
     if not deck_empty:
         return
     holders = [gp for gp in _player_circle(game) if gp.cards_remaining > 0]
@@ -237,31 +237,31 @@ def _rotate_roles_after_success(game: Game):
 
 def _clear_table_to_discard(game: Game):
     cards: list[Card] = []
-    for tc in TableCard.objects.filter(game=game).order_by("id"):
+    for tc in TableCard.objects.filter(fools=game).order_by("id"):
         cards.append(tc.attack_card)
         if tc.defense_card:
             cards.append(tc.defense_card)
-    TableCard.objects.filter(game=game).delete()
+    TableCard.objects.filter(fools=game).delete()
     if cards:
         DiscardPile.discard_cards(game, cards)
 
 
 def _clear_table_to_hand(game: Game, user: User):
-    for tc in TableCard.objects.filter(game=game).order_by("id"):
+    for tc in TableCard.objects.filter(fools=game).order_by("id"):
         for c in (tc.attack_card, tc.defense_card):
             if not c:
                 continue
-            max_order = PlayerHand.objects.filter(game=game, player=user).aggregate(
+            max_order = PlayerHand.objects.filter(fools=game, player=user).aggregate(
                 m=Max("order_in_hand")
             )["m"]
             next_order = (max_order or 0) + 1
             PlayerHand.objects.create(
-                game=game,
+                fools=game,
                 player=user,
                 card=c,
                 order_in_hand=next_order,
             )
-    TableCard.objects.filter(game=game).delete()
+    TableCard.objects.filter(fools=game).delete()
     _refresh_card_counts(game)
 
 
@@ -273,7 +273,7 @@ def _table_attack_ranks(game: Game) -> set[int]:
     Resolves ranks via :class:`~fools.models.Card` rows (not multi-hop ``values_list`` on
     nullable defense FKs) so every card on the table contributes reliably.
     """
-    pairs = TableCard.objects.filter(game=game).values_list(
+    pairs = TableCard.objects.filter(fools=game).values_list(
         "attack_card_id", "defense_card_id"
     )
     card_ids: set[UUID] = set()
@@ -290,15 +290,15 @@ def _table_attack_ranks(game: Game) -> set[int]:
 
 
 def _defender_hand_size(game: Game, defender_id: UUID) -> int:
-    return PlayerHand.objects.filter(game=game, player_id=defender_id).count()
+    return PlayerHand.objects.filter(fools=game, player_id=defender_id).count()
 
 
 def _count_undefended(game: Game) -> int:
-    return TableCard.objects.filter(game=game, defense_card__isnull=True).count()
+    return TableCard.objects.filter(fools=game, defense_card__isnull=True).count()
 
 
 def _all_defended(game: Game) -> bool:
-    qs = TableCard.objects.filter(game=game)
+    qs = TableCard.objects.filter(fools=game)
     return qs.exists() and not qs.filter(defense_card__isnull=True).exists()
 
 
@@ -536,11 +536,11 @@ def start_game(lobby: Lobby, user: User) -> Game:
         runtime_state={},
     )
     for pos, cid in enumerate(rest):
-        GameDeck.objects.create(game=game, card_id=cid, position=pos)
+        GameDeck.objects.create(fools=game, card_id=cid, position=pos)
 
     for seat, lp in enumerate(ready_players, start=1):
         GamePlayer.objects.create(
-            game=game,
+            fools=game,
             user=lp.user,
             seat_position=seat,
             cards_remaining=0,
@@ -555,7 +555,7 @@ def start_game(lobby: Lobby, user: User) -> Game:
             c = entry.card
             entry.delete()
             PlayerHand.objects.create(
-                game=game,
+                fools=game,
                 player=gp.user,
                 card=c,
                 order_in_hand=None,
@@ -638,7 +638,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
     trump = game.trump_card
     rs = _rs(game)
     table = []
-    for tc in TableCard.objects.filter(game=game).select_related(
+    for tc in TableCard.objects.filter(fools=game).select_related(
         "attack_card__suit", "attack_card__rank", "defense_card__suit", "defense_card__rank"
     ):
         table.append(
@@ -654,7 +654,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
         if gp.user_id == viewer.id:
             hand = [
                 {**_card_json(ph.card), "hand_id": str(ph.id)}
-                for ph in PlayerHand.objects.filter(game=game, player=gp.user)
+                for ph in PlayerHand.objects.filter(fools=game, player=gp.user)
                 .select_related("card__suit", "card__rank")
                 .order_by("order_in_hand", "id")
             ]
@@ -667,7 +667,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
                 "hand": hand,
             }
         )
-    deck_left = GameDeck.objects.filter(game=game).count()
+    deck_left = GameDeck.objects.filter(fools=game).count()
     return {
         "id": str(game.id),
         "lobby_id": str(game.lobby_id),
@@ -729,7 +729,7 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
     if phase == PHASE_BETWEEN:
         if user.id != attacker_id:
             raise GameError("Only attacker may open", "turn")
-        if TableCard.objects.filter(game=game).exists():
+        if TableCard.objects.filter(fools=game).exists():
             raise GameError("Table must be empty", "state")
         if not card_ids:
             raise GameError("Play at least one card", "cards")
@@ -763,15 +763,15 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
                     "cards",
                 )
         max_cards = _defender_hand_size(game, defender_id)
-        on_table = TableCard.objects.filter(game=game).count()
+        on_table = TableCard.objects.filter(fools=game).count()
         if on_table + len(cards) > max_cards:
             raise GameError("Too many cards on table", "rules")
 
     turn = _ensure_turn(game, user)
     for c in cards:
-        ph = PlayerHand.objects.get(game=game, player=user, card=c)
+        ph = PlayerHand.objects.get(fools=game, player=user, card=c)
         ph.remove_from_hand()
-        tc = TableCard.objects.create(game=game, attack_card=c)
+        tc = TableCard.objects.create(fools=game, attack_card=c)
         Move.objects.create(turn=turn, table_card=tc, action_type="attack")
 
     _refresh_card_counts(game)
@@ -782,7 +782,7 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
 def _cards_in_hand(game: Game, user: User, card_ids: Iterable[UUID]) -> list[Card]:
     ids = list(card_ids)
     hands = list(
-        PlayerHand.objects.filter(game=game, player=user, card_id__in=ids).select_related(
+        PlayerHand.objects.filter(fools=game, player=user, card_id__in=ids).select_related(
             "card__rank"
         )
     )
@@ -804,7 +804,7 @@ def seal_attack(game: Game, user: User):
         raise GameError("Only attacker can seal", "turn")
     if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Not in attack wave", "phase")
-    if not TableCard.objects.filter(game=game).exists():
+    if not TableCard.objects.filter(fools=game).exists():
         raise GameError("Nothing to seal", "state")
     broadcast_game(game.id, "game_update", {})
 
@@ -829,14 +829,14 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
         raise GameError("Only defender acts", "turn")
     if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Not defense phase", "phase")
-    tc = TableCard.objects.select_related("attack_card").get(game=game, id=table_card_id)
+    tc = TableCard.objects.select_related("attack_card").get(fools=game, id=table_card_id)
     if tc.defense_card_id:
         raise GameError("Already defended", "state")
-    defense_card = PlayerHand.objects.get(game=game, player=user, card_id=card_id).card
+    defense_card = PlayerHand.objects.get(fools=game, player=user, card_id=card_id).card
     trump = game.trump_card.suit
     if not tc.is_valid_defense(defense_card, trump):
         raise GameError("Illegal defense card", "cards")
-    ph = PlayerHand.objects.get(game=game, player=user, card=defense_card)
+    ph = PlayerHand.objects.get(fools=game, player=user, card=defense_card)
     ph.remove_from_hand()
     tc.defense_card = defense_card
     tc.save(update_fields=["defense_card"])
@@ -865,11 +865,11 @@ def take_table(game: Game, user: User):
         raise GameError("Only defender may take", "turn")
     if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Not defense phase", "phase")
-    if not TableCard.objects.filter(game=game).exists():
+    if not TableCard.objects.filter(fools=game).exists():
         raise GameError("Table empty", "state")
 
     turn = _ensure_turn(game, user)
-    for tc in TableCard.objects.filter(game=game):
+    for tc in TableCard.objects.filter(fools=game):
         Move.objects.create(turn=turn, table_card=tc, action_type="pickup")
 
     _clear_table_to_hand(game, user)

@@ -61,7 +61,10 @@ class LoginSerializer(serializers.Serializer):
         """
         user = authenticate(username=attrs['username'], password=attrs['password'])
         if not user:
-            raise serializers.ValidationError('Incorrect login details')
+            # One message for an unknown user, a wrong password, and an
+            # inactive account. authenticate() already returns None for
+            # inactive users, so this does not reveal which case failed.
+            raise serializers.ValidationError('Incorrect username or password.')
         attrs['user'] = user
         return attrs
 

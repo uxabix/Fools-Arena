@@ -90,16 +90,16 @@ class TestLobbyServices:
         set_ready(lobby, test_user, True)
         set_ready(lobby, second_user, True)
         game = start_game(lobby, test_user)
-        hand_ids = list(PlayerHand.objects.filter(game=game).values_list("card_id", flat=True))
+        hand_ids = list(PlayerHand.objects.filter(fools=game).values_list("card_id", flat=True))
         assert len(hand_ids) == len(set(hand_ids))
         suit_rank = {
             (ph.card.suit_id, ph.card.rank_id)
-            for ph in PlayerHand.objects.filter(game=game).select_related("card")
+            for ph in PlayerHand.objects.filter(fools=game).select_related("card")
         }
         assert len(suit_rank) == len(hand_ids)
         trump_id = game.trump_card_id
         assert trump_id not in hand_ids
-        assert not GameDeck.objects.filter(game=game, card_id=trump_id).exists()
+        assert not GameDeck.objects.filter(fools=game, card_id=trump_id).exists()
 
     def test_start_game_auto_seeds_cards_when_missing(self, test_user, second_user, durak_deck_36):
         """If normal playing cards were removed, ``start_game`` repopulates the catalog."""
@@ -139,7 +139,7 @@ def test_attack_stays_in_build_for_parallel_defense(test_user, second_user, dura
     rs = game.runtime_state or {}
     assert rs.get("phase") == "between"
     attacker = test_user if str(test_user.id) == rs.get("attacker_id") else second_user
-    hands = PlayerHand.objects.filter(game=game, player=attacker).select_related("card__rank")
+    hands = PlayerHand.objects.filter(fools=game, player=attacker).select_related("card__rank")
     by_rank_value = {}
     for ph in hands:
         by_rank_value.setdefault(ph.card.rank.value, []).append(ph.card.id)
@@ -159,7 +159,7 @@ def test_table_attack_ranks_includes_defensive_card(durak_deck_36, test_user):
     game = Game.objects.create(lobby=lobby, trump_card=trump, status="in_progress", runtime_state={})
     eight = Card.objects.filter(rank__value=8, special_card__isnull=True).first()
     q_cover = Card.objects.filter(rank__value=12, special_card__isnull=True).first()
-    TableCard.objects.create(game=game, attack_card=eight, defense_card=q_cover)
+    TableCard.objects.create(fools=game, attack_card=eight, defense_card=q_cover)
     allowed = _table_attack_ranks(game)
     assert 8 in allowed
     assert 12 in allowed
@@ -185,21 +185,21 @@ def test_third_player_may_throw_rank_seen_only_on_defense(durak_deck_36, user_fa
         },
     )
     for seat, u in enumerate((a, b, c), start=1):
-        GamePlayer.objects.create(game=game, user=u, seat_position=seat, cards_remaining=0)
+        GamePlayer.objects.create(fools=game, user=u, seat_position=seat, cards_remaining=0)
     eight = Card.objects.filter(rank__value=8, special_card__isnull=True).first()
     queens = list(Card.objects.filter(rank__value=12, special_card__isnull=True)[:2])
     q_cover, q_hand = queens[0], queens[1]
     blocked = {eight.id, q_cover.id, q_hand.id}
     filler = list(Card.objects.filter(special_card__isnull=True).exclude(id__in=blocked)[:6])
     for i, card in enumerate(filler):
-        PlayerHand.objects.create(game=game, player=b, card=card, order_in_hand=i + 1)
-    GamePlayer.objects.filter(game=game, user=b).update(cards_remaining=len(filler))
-    TableCard.objects.create(game=game, attack_card=eight, defense_card=q_cover)
-    PlayerHand.objects.create(game=game, player=c, card=q_hand, order_in_hand=1)
-    GamePlayer.objects.filter(game=game, user=c).update(cards_remaining=1)
+        PlayerHand.objects.create(fools=game, player=b, card=card, order_in_hand=i + 1)
+    GamePlayer.objects.filter(fools=game, user=b).update(cards_remaining=len(filler))
+    TableCard.objects.create(fools=game, attack_card=eight, defense_card=q_cover)
+    PlayerHand.objects.create(fools=game, player=c, card=q_hand, order_in_hand=1)
+    GamePlayer.objects.filter(fools=game, user=c).update(cards_remaining=1)
 
     play_attack(game, c, [q_hand.id])
-    assert TableCard.objects.filter(game=game).count() == 2
+    assert TableCard.objects.filter(fools=game).count() == 2
 
 
 @pytest.mark.django_db
@@ -222,20 +222,20 @@ def test_throw_eight_when_two_tens_beaten_by_eight_and_queen(durak_deck_36, user
         },
     )
     for seat, u in enumerate((a, b, c), start=1):
-        GamePlayer.objects.create(game=game, user=u, seat_position=seat, cards_remaining=0)
+        GamePlayer.objects.create(fools=game, user=u, seat_position=seat, cards_remaining=0)
     tens = list(Card.objects.filter(rank__value=10, special_card__isnull=True)[:2])
     eights = list(Card.objects.filter(rank__value=8, special_card__isnull=True)[:2])
     queens = list(Card.objects.filter(rank__value=12, special_card__isnull=True)[:1])
     blocked = {tens[0].id, tens[1].id, eights[0].id, eights[1].id, queens[0].id}
     filler = list(Card.objects.filter(special_card__isnull=True).exclude(id__in=blocked)[:6])
     for i, card in enumerate(filler):
-        PlayerHand.objects.create(game=game, player=b, card=card, order_in_hand=i + 1)
-    GamePlayer.objects.filter(game=game, user=b).update(cards_remaining=len(filler))
-    TableCard.objects.create(game=game, attack_card=tens[0], defense_card=eights[0])
-    TableCard.objects.create(game=game, attack_card=tens[1], defense_card=queens[0])
-    PlayerHand.objects.create(game=game, player=c, card=eights[1], order_in_hand=1)
-    GamePlayer.objects.filter(game=game, user=c).update(cards_remaining=1)
+        PlayerHand.objects.create(fools=game, player=b, card=card, order_in_hand=i + 1)
+    GamePlayer.objects.filter(fools=game, user=b).update(cards_remaining=len(filler))
+    TableCard.objects.create(fools=game, attack_card=tens[0], defense_card=eights[0])
+    TableCard.objects.create(fools=game, attack_card=tens[1], defense_card=queens[0])
+    PlayerHand.objects.create(fools=game, player=c, card=eights[1], order_in_hand=1)
+    GamePlayer.objects.filter(fools=game, user=c).update(cards_remaining=1)
 
     assert 8 in _table_attack_ranks(game)
     play_attack(game, c, [eights[1].id])
-    assert TableCard.objects.filter(game=game).count() == 3
+    assert TableCard.objects.filter(fools=game).count() == 3

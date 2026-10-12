@@ -33,7 +33,7 @@ class TestTemplateAuth:
             'password2': 'StrongPass123',
         })
         assert resp.status_code == 302
-        assert resp.url == reverse('profile')
+        assert resp.url == reverse('fools-lobby-list-page')
         assert User.objects.filter(username='maksim').exists()
 
     def test_register_invalid_password_mismatch(self, client):
@@ -50,6 +50,12 @@ class TestTemplateAuth:
         })
         assert resp.status_code == 200
         assert not User.objects.filter(username='bad').exists()
+        body = resp.content.decode()
+        assert "Passwords do not match." in body
+        assert 'value="bad"' in body
+        assert 'value="b@example.com"' in body
+        assert 'value="StrongPass123"' in body
+        assert 'value="StrongPass124"' in body
 
     def test_login_valid(self, client, user_factory):
         """Test successful login through UI.
@@ -62,7 +68,7 @@ class TestTemplateAuth:
             'password': 'test123',
         })
         assert resp.status_code == 302
-        assert resp.url == reverse('profile')
+        assert resp.url == reverse('fools-lobby-list-page')
 
     def test_login_invalid(self, client):
         """Test login with invalid credentials.
@@ -74,6 +80,13 @@ class TestTemplateAuth:
             'password': 'wrong'
         })
         assert resp.status_code == 200
+        body = resp.content.decode()
+        assert "Incorrect username or password." in body
+        assert "Please enter a correct" not in body
+        assert "exists" not in body.lower()
+        assert "inactive" not in body.lower()
+        assert 'value="nope"' in body
+        assert 'value="wrong"' in body
 
     def test_profile_requires_authentication(self, client):
         """Test profile page access without authentication.
@@ -94,6 +107,79 @@ class TestTemplateAuth:
         resp = client.post(reverse('logout'))
         assert resp.status_code == 302
         assert resp.url == reverse('login')
+
+    def test_login_wrong_password_hides_account(self, client, user_factory):
+        """A wrong password must not reveal that the account exists."""
+        user = user_factory(password="test123")
+        resp = client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'not-the-password',
+        })
+        assert resp.status_code == 200
+        body = resp.content.decode()
+        assert "Incorrect username or password." in body
+        assert "exists" not in body.lower()
+        assert "inactive" not in body.lower()
+        assert 'value="%s"' % user.username in body
+        assert 'value="not-the-password"' in body
+
+    def test_login_inactive_uses_same_message(self, client, user_factory):
+        """An inactive account gets the same message as a bad password."""
+        user = user_factory(password="test123", is_active=False)
+        resp = client.post(reverse('login'), {
+            'username': user.username,
+            'password': 'test123',
+        })
+        assert resp.status_code == 200
+        body = resp.content.decode()
+        assert "Incorrect username or password." in body
+        assert "inactive" not in body.lower()
+        assert "disabled" not in body.lower()
+
+    def test_register_page_shows_rules_and_action(self, client):
+        """Registration shows persistent labels, rules, and an action button."""
+        resp = client.get(reverse('register'))
+        body = resp.content.decode()
+        assert "At least 8 characters" in body
+        assert "Not only numbers" in body
+        assert "Create account" in body
+        assert 'placeholder="name@example.com"' in body
+        assert "Show password" in body
+        password_inputs = [
+            tag for tag in body.split("<input")
+            if 'type="password"' in tag
+        ]
+        assert len(password_inputs) == 2
+        for tag in password_inputs:
+            assert "maxlength" not in tag
+            assert "onpaste" not in tag
+
+    def test_register_accepts_long_password(self, client):
+        """Passwords longer than 16 characters are allowed, past 128 are not."""
+        long_ok = "StrongPass123" + "x" * 20
+        assert 16 < len(long_ok) <= 128
+        resp = client.post(reverse('register'), {
+            'username': 'longpassuser',
+            'email': 'longpass@example.com',
+            'password1': long_ok,
+            'password2': long_ok,
+        }, follow=True)
+        assert resp.status_code == 200
+        assert b"Account created. You are signed in." in resp.content
+        assert User.objects.filter(username='longpassuser').exists()
+
+        client.logout()
+        too_long = "StrongPass123" + "y" * 120
+        assert len(too_long) > 128
+        resp = client.post(reverse('register'), {
+            'username': 'toolonguser',
+            'email': 'toolong@example.com',
+            'password1': too_long,
+            'password2': too_long,
+        })
+        assert resp.status_code == 200
+        assert b"Use 128 characters or fewer." in resp.content
+        assert not User.objects.filter(username='toolonguser').exists()
 
 
 @pytest.mark.django_db
@@ -154,6 +240,8 @@ class TestAPIAuth:
             'password': 'wrong'
         }, format='json')
         assert resp.status_code == 400
+        assert "Incorrect username or password." in str(resp.data)
+        assert "exists" not in str(resp.data).lower()
 
     def test_api_profile_authenticated(self, api_client, user_factory):
         """Test authenticated API profile access.

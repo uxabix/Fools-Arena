@@ -26,7 +26,7 @@ class TestUserGameMethods:
             test_user: A fixture for a test user.
         """
         GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=6
@@ -44,7 +44,7 @@ class TestUserGameMethods:
         basic_game.status = 'finished'
         basic_game.save()
         GamePlayer.objects.create(
-            game=basic_game,
+            fools=basic_game,
             user=test_user,
             seat_position=1,
             cards_remaining=0

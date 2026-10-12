@@ -42,8 +42,8 @@ class TestUserStatisticsMethods:
                 status='finished',
                 loser=test_user if i == 0 else second_user
             )
-            GamePlayer.objects.create(game=game, user=test_user, seat_position=1, cards_remaining=6)
-            GamePlayer.objects.create(game=game, user=second_user, seat_position=2, cards_remaining=6)
+            GamePlayer.objects.create(fools=game, user=test_user, seat_position=1, cards_remaining=6)
+            GamePlayer.objects.create(fools=game, user=second_user, seat_position=2, cards_remaining=6)
 
         stats = test_user.get_game_statistics()
         assert stats['total_games'] == 3
@@ -70,7 +70,7 @@ class TestUserStatisticsMethods:
             trump_card=basic_cards['ace_hearts'],
             status='in_progress'
         )
-        GamePlayer.objects.create(game=active_game, user=test_user, seat_position=1, cards_remaining=6)
+        GamePlayer.objects.create(fools=active_game, user=test_user, seat_position=1, cards_remaining=6)
 
         # Create a finished fools (should be counted)
         finished_game = game_factory(
@@ -79,8 +79,8 @@ class TestUserStatisticsMethods:
             status='finished',
             loser=second_user  # test_user wins
         )
-        GamePlayer.objects.create(game=finished_game, user=test_user, seat_position=1, cards_remaining=6)
-        GamePlayer.objects.create( game=finished_game, user=second_user, seat_position=2, cards_remaining=6)
+        GamePlayer.objects.create(fools=finished_game, user=test_user, seat_position=1, cards_remaining=6)
+        GamePlayer.objects.create( fools=finished_game, user=second_user, seat_position=2, cards_remaining=6)
 
         stats = test_user.get_game_statistics()
 
