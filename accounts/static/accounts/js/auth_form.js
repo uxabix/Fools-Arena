@@ -6,12 +6,42 @@
 (function () {
   "use strict";
 
+  document.querySelectorAll(".auth-field__reveal").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var input = document.getElementById(button.getAttribute("aria-controls"));
+      if (!input) return;
+      var showing = input.type === "password";
+      input.type = showing ? "text" : "password";
+      button.setAttribute("aria-pressed", showing ? "true" : "false");
+      button.setAttribute("aria-label", showing ? "Hide password" : "Show password");
+      var showIcon = button.querySelector("[data-icon='show']");
+      var hideIcon = button.querySelector("[data-icon='hide']");
+      if (showIcon) showIcon.hidden = showing;
+      if (hideIcon) hideIcon.hidden = !showing;
+    });
+  });
+
+  document.querySelectorAll("form[data-busy-submit]").forEach(function (busyForm) {
+    busyForm.addEventListener("submit", function () {
+      var button = busyForm.querySelector("[type=submit]");
+      if (!button) return;
+      var label = button.querySelector(".auth-submit__label");
+      var loadingText = button.getAttribute("data-loading-label");
+      if (label && loadingText) label.textContent = loadingText;
+      button.setAttribute("aria-busy", "true");
+      button.classList.add("is-loading");
+      window.setTimeout(function () {
+        button.disabled = true;
+      }, 0);
+    });
+  });
+
   var form = document.querySelector("[data-auth-form]");
   if (!form) return;
 
   var mode = form.getAttribute("data-auth-form");
-  var passwordKey = mode === "reset" ? "new_password1" : "password1";
-  var confirmKey = mode === "reset" ? "new_password2" : "password2";
+  var passwordKey = (mode === "reset" || mode === "password") ? "new_password1" : "password1";
+  var confirmKey = (mode === "reset" || mode === "password") ? "new_password2" : "password2";
   var minLength = parseInt(form.getAttribute("data-password-min") || "8", 10);
   var maxLength = parseInt(form.getAttribute("data-password-max") || "128", 10);
   var usernameMin = parseInt(form.getAttribute("data-username-min") || "3", 10);
@@ -174,7 +204,7 @@
   }
 
   function updateRules(showFailures) {
-    if (mode !== "register" && mode !== "reset") return;
+    if (mode !== "register" && mode !== "reset" && mode !== "password") return;
     var password = inputOf(passwordKey);
     var value = password ? password.value : "";
     if (!value) {
@@ -304,11 +334,11 @@
     var name = mode === "login" ? "password" : passwordKey;
     var value = inputOf(name).value;
     var show = showFailures || revealed[name];
-    if (mode === "register" || mode === "reset") updateRules(show);
+    if (mode === "register" || mode === "reset" || mode === "password") updateRules(show);
     if (!show) return true;
     if (serverStillApplies(name)) {
       showFeedback(name, serverMessages[name], "error");
-      if (mode === "register" || mode === "reset") applyServerRules();
+      if (mode === "register" || mode === "reset" || mode === "password") applyServerRules();
       return false;
     }
     if (mode === "login") {
@@ -358,8 +388,25 @@
   function validateField(name, showFailures) {
     if (name === "username") return validateUsername(showFailures);
     if (name === "email") return validateEmail(showFailures);
+    if (name === "old_password") return validateOldPassword(showFailures);
     if (name === "password" || name === passwordKey) return validatePassword(showFailures);
     if (name === confirmKey) return validateConfirm(showFailures);
+    return true;
+  }
+
+  function validateOldPassword(showFailures) {
+    var input = inputOf("old_password");
+    if (!input) return true;
+    if (!showFailures && !revealed.old_password) return true;
+    if (serverStillApplies("old_password")) {
+      showFeedback("old_password", serverMessages.old_password, "error");
+      return false;
+    }
+    if (!input.value) {
+      showFeedback("old_password", ["Enter your current password."], "error");
+      return false;
+    }
+    clearFeedback("old_password");
     return true;
   }
 
@@ -390,7 +437,9 @@
       ? ["username", "email", passwordKey, confirmKey]
       : mode === "reset"
         ? [passwordKey, confirmKey]
-        : ["username", "password"];
+        : mode === "password"
+          ? ["old_password", passwordKey, confirmKey]
+          : ["username", "password"];
     var ok = true;
     names.forEach(function (name) {
       var input = inputOf(name);
@@ -403,21 +452,6 @@
     });
     return ok;
   }
-
-  form.querySelectorAll(".auth-field__reveal").forEach(function (button) {
-    button.addEventListener("click", function () {
-      var input = document.getElementById(button.getAttribute("aria-controls"));
-      if (!input) return;
-      var showing = input.type === "password";
-      input.type = showing ? "text" : "password";
-      button.setAttribute("aria-pressed", showing ? "true" : "false");
-      button.setAttribute("aria-label", showing ? "Hide password" : "Show password");
-      var showIcon = button.querySelector("[data-icon='show']");
-      var hideIcon = button.querySelector("[data-icon='hide']");
-      if (showIcon) showIcon.hidden = showing;
-      if (hideIcon) hideIcon.hidden = !showing;
-    });
-  });
 
   form.querySelectorAll(".auth-field input").forEach(function (input) {
     var wrap = input.closest(".auth-field");

@@ -14,7 +14,7 @@ Password reset and confirmation links expire after Django's `PASSWORD_RESET_TIME
 
 ## Email request limit
 
-Registration, the confirmation resend form, and password reset share one limit: `ACCOUNT_EMAIL_RATE_LIMIT` attempts per `ACCOUNT_EMAIL_RATE_WINDOW` seconds (defaults: 5 per hour). The same numbers apply to API registration, because it sends the same confirmation mail.
+Registration, the confirmation resend form, password reset, and the profile change-password button share one limit: `ACCOUNT_EMAIL_RATE_LIMIT` attempts per `ACCOUNT_EMAIL_RATE_WINDOW` seconds (defaults: 5 per hour). The same numbers apply to API registration, because it sends the same confirmation mail.
 
 Each attempt counts against the caller IP (`REMOTE_ADDR`) and, when an address was submitted, against that address. The attempt is counted even when no account exists, so a rate-limit response does not reveal who is registered. A blocked call does not send mail and, for registration, does not create the account. The message is "Too many attempts. Try again later."
 
@@ -29,6 +29,12 @@ Passwords are hashed by Django. They are never written to logs. New passwords mu
 Usernames for new accounts are 3–30 characters and may contain only letters, digits, and underscore. Uniqueness ignores case (`accounts_user_username_ci`). Spaces, control characters, HTML markers, and web addresses are rejected. Reserved names such as `admin` and `support` cannot be registered; underscores do not bypass that (`Ad_min` is still reserved). Accounts created before these rules, including the existing `admin` user, keep their names and can still sign in.
 
 Email addresses are stored in lower case and are unique. Older rows may have no email. Those accounts can sign in with a username, but password reset has nowhere to send mail until an address is set.
+
+## Profile account changes
+
+Changing an email on the profile requires the current password. The new address is stored immediately and is not confirmed by a second link.
+
+Changing a password from the profile does not ask for the current password. The button emails the same reset link as the public password-reset form, to the address already stored on the account. The new password is chosen on that link. An account with no email cannot start this until an address is added. The request uses the shared email limit, and a blocked request does not send mail.
 
 ## Game and chat authority
 

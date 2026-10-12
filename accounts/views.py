@@ -20,6 +20,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth import views as auth_views
+from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
@@ -30,6 +31,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import (
     PASSWORD_MAX_LENGTH,
+    EmailChangeForm,
     LoginForm,
     NewPasswordForm,
     PasswordResetRequestForm,
@@ -250,14 +252,103 @@ class PasswordResetFinishedView(auth_views.PasswordResetCompleteView):
 
 
 @login_required
+@csrf_protect
 def profile_view(request):
-    """
-    Display the authenticated user's profile page.
+    """Show the signed-in player's profile and account settings.
 
-    Requires the user to be logged in. If the user is not authenticated,
-    they will be redirected to the login page.
+    The nickname is the heading. A current match or lobby becomes the
+    main action. Finished-game statistics come from ``get_game_statistics``.
+    Email changes stay on this private page. A password change emails
+    the same reset link as the public password-reset form.
     """
-    return render(request, 'accounts/profile.html')
+    user = request.user
+    email_form = EmailChangeForm(user)
+    open_email = False
+    open_password = False
+    password_error = ""
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "email":
+            email_form = EmailChangeForm(user, data=request.POST)
+            open_email = True
+            if email_form.is_valid():
+                user.email = email_form.cleaned_data["email"]
+                user.save(update_fields=["email"])
+                logger.info("Email updated: id=%s", user.pk)
+                messages.success(request, "Email updated.")
+                return redirect("profile")
+        elif action == "password":
+            open_password = True
+            password_error = _send_profile_password_reset(request, user)
+            if not password_error:
+                messages.success(
+                    request,
+                    "Check your email. We sent a link to choose a new password.",
+                )
+                return redirect("profile")
+    current_game = user.get_current_game()
+    active_lobby = None if current_game else user.get_active_lobby()
+    stats = user.get_game_statistics()
+    return render(request, "accounts/profile.html", {
+        "email_form": email_form,
+        "open_email": open_email,
+        "open_password": open_password,
+        "password_error": password_error,
+        "current_game": current_game,
+        "active_lobby": active_lobby,
+        "stats": stats,
+        "initials": _profile_initials(user.username),
+    })
+
+
+def _send_profile_password_reset(request, user):
+    """Email the same reset link used by the public password-reset form.
+
+    The signed-in person does not type the current password. The link goes
+    to the address already stored on the account. The shared email limit
+    applies, and no mail is sent when the account has no address.
+
+    Args:
+        request: Profile POST that asked for the link.
+        user: Signed-in account.
+
+    Returns:
+        str: An error message, or an empty string when the mail was sent.
+    """
+    if not user.email:
+        return "Add an email before changing your password."
+    if email_request_blocked(request, user.email):
+        return TOO_MANY_EMAIL_REQUESTS
+    form = PasswordResetForm({"email": user.email})
+    if not form.is_valid():
+        logger.warning("Profile password reset rejected: id=%s", user.pk)
+        return "We could not send the reset link. Try again later."
+    form.save(
+        request=request,
+        use_https=request.is_secure(),
+        email_template_name="accounts/password_reset_email.txt",
+        subject_template_name="accounts/password_reset_subject.txt",
+    )
+    logger.info("Password reset requested from profile: id=%s", user.pk)
+    return ""
+
+
+def _profile_initials(username):
+    """Return one or two letters to show when no avatar image is set.
+
+    Args:
+        username (str): Account name.
+
+    Returns:
+        str: Uppercase initials, or a question mark when the name has none.
+    """
+    letters = [character for character in username if character.isalnum()]
+    if not letters:
+        return "?"
+    if len(letters) == 1:
+        return letters[0].upper()
+    return (letters[0] + letters[1]).upper()
+
 
 @csrf_protect
 def logout_view(request):

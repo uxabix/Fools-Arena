@@ -347,3 +347,66 @@ class NewPasswordForm(SetPasswordForm):
         super().validate_password_for_user(
             user, password_field_name="new_password1"
         )
+
+
+class EmailChangeForm(forms.Form):
+    """Replace the account email after checking the current password."""
+
+    email = forms.EmailField(
+        label="Email",
+        error_messages={
+            "required": "Enter your email.",
+            "invalid": "Enter a valid email address, such as name@example.com.",
+        },
+    )
+    current_password = forms.CharField(
+        label="Current password",
+        strip=False,
+        widget=forms.PasswordInput(),
+    )
+
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        self.fields["email"].widget.attrs.update(
+            {
+                "class": "fools-input",
+                "placeholder": "name@example.com",
+                "autocomplete": "email",
+                "autocapitalize": "none",
+                "spellcheck": "false",
+                "inputmode": "email",
+                "aria-describedby": "id_email-feedback",
+            }
+        )
+        self.fields["current_password"].widget = _password_widget(
+            "current-password",
+            "Enter your current password",
+            "id_current_password-feedback",
+        )
+        if user.email and not self.is_bound:
+            self.fields["email"].initial = user.email
+
+    def clean_email(self):
+        """Return a free, normalized address.
+
+        Returns:
+            str: Lowercased email that no other account uses.
+        """
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        taken = User.objects.filter(email__iexact=email).exclude(pk=self.user.pk)
+        if email and taken.exists():
+            raise forms.ValidationError("An account with this email already exists.")
+        return email
+
+    def clean_current_password(self):
+        """Require the password that is already on the account.
+
+        Returns:
+            str: The submitted current password.
+        """
+        password = self.cleaned_data.get("current_password") or ""
+        if not self.user.check_password(password):
+            raise forms.ValidationError("Current password is incorrect.")
+        return password
+

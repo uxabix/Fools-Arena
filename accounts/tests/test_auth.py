@@ -101,6 +101,18 @@ class TestTemplateAuth:
         assert resp.status_code == 302
         assert reverse('login') in resp.url
 
+    def test_profile_cards_use_icons(self, client, test_user):
+        """Profile shortcuts are icons, and hover does not restyle them as text."""
+        client.force_login(test_user)
+        html = client.get(reverse("profile")).content.decode()
+        assert "Games &amp; lobbies" not in html
+        assert "Messages" in html
+        assert "Find a game" in html
+        assert "🃏" not in html
+        assert "💬" not in html
+        assert "Sign out" in html
+        assert "<svg" in html
+
     def test_logout(self, client, user_factory):
         """Test logout functionality through UI.
 

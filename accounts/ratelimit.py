@@ -1,6 +1,6 @@
 """Limits how often account emails can be requested.
 
-Registration, confirmation resend, and password reset share one window.
+Registration, confirmation resend, password reset, and a password change started from the profile share one window.
 The same response is used whether or not an account exists, so the limit
 does not reveal who is registered.
 """

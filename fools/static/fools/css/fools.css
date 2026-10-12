@@ -187,6 +187,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 0.55rem 1.1rem;
   font-size: 0.9rem;
   font-weight: 600;
@@ -195,6 +197,11 @@
   border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.game-btn:focus-visible {
+  outline: 2px solid #f0d56a;
+  outline-offset: 3px;
 }
 
 .game-btn:active {
@@ -1216,22 +1223,314 @@ body.game-skin {
 }
 
 /* Profile */
+.profile-page {
+  max-width: 40rem;
+  min-width: 0;
+}
+
+.profile-page .game-panel {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.profile-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(240, 213, 106, 0.16);
+  color: #f0d56a;
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.profile-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-kicker {
+  margin: 0;
+  color: #d7dce3;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.profile-identity__text {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profile-name {
+  margin: 0.1rem 0 0;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 480px) {
+  .profile-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .profile-identity__text {
+    align-self: stretch;
+  }
+
+  .profile-name {
+    font-size: 1.45rem;
+  }
+}
+
+.profile-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  min-width: 0;
+}
+
+.profile-resume {
+  align-self: flex-start;
+  min-height: 2.75rem;
+  white-space: normal;
+}
+
+.profile-resume svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+}
+
+.game-page a.profile-secondary,
+.game-page a.profile-secondary:hover,
+.game-page a.profile-secondary:focus {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  align-self: flex-start;
+  min-height: 2.75rem;
+  color: #f3f5f8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.profile-secondary svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #f0d56a;
+}
+
+.profile-secondary:focus-visible {
+  outline: 2px solid #f0d56a;
+  outline-offset: 3px;
+}
+
+.profile-section-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  color: #f3f5f8;
+}
+
+.profile-empty {
+  margin: 0 0 0.75rem;
+  color: #f3f5f8;
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.profile-stats div {
+  padding: 0.75rem 0.85rem;
+  background: var(--game-bg);
+  border: 1px solid #9aa3b2;
+  border-radius: var(--game-radius-sm);
+}
+
+.profile-stats dt {
+  color: #d7dce3;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.profile-stats dd {
+  margin: 0.2rem 0 0;
+  color: #f3f5f8;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.profile-note {
+  margin: 0.75rem 0 0;
+  color: #d7dce3;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.profile-account {
+  margin-top: 1.5rem;
+}
+
+.profile-account__email {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin: 0 0 0.5rem;
+  color: #f3f5f8;
+  overflow-wrap: anywhere;
+}
+
+.profile-account__label {
+  color: #d7dce3;
+  font-weight: 600;
+}
+
+.profile-account__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+  min-width: 0;
+}
+
+.profile-editor {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.profile-editor[open] {
+  flex: 1 1 100%;
+}
+
+.profile-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 2.5rem;
+  padding: 0.4rem 0.85rem;
+  list-style: none;
+  color: #f3f5f8;
+  background: var(--game-surface-elevated);
+  border: 1px solid #9aa3b2;
+  border-radius: var(--game-radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.profile-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.profile-toggle::marker {
+  content: "";
+}
+
+.profile-toggle svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+  color: #f0d56a;
+}
+
+.profile-toggle:hover {
+  border-color: #f0d56a;
+  background: rgba(240, 213, 106, 0.1);
+}
+
+.profile-editor[open] .profile-toggle {
+  border-color: #f0d56a;
+  background: rgba(240, 213, 106, 0.14);
+}
+
+.profile-toggle:focus-visible {
+  outline: 2px solid #f0d56a;
+  outline-offset: 3px;
+}
+
+.profile-editor form {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--game-bg);
+  border: 1px solid #9aa3b2;
+  border-radius: var(--game-radius-sm);
+}
+
+.profile-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.profile-note a {
+  color: #f0d56a;
+  font-weight: 600;
+}
+
+.profile-note a:hover {
+  color: #ffe59a;
+}
+
+@media (min-width: 640px) {
+  .profile-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.profile-secondary {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
 .profile-details {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.35rem 1.25rem;
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  gap: 0.45rem 1.25rem;
   margin: 0 0 1.5rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 .profile-details dt {
-  color: var(--game-muted);
-  font-weight: 500;
+  color: #d7dce3;
+  font-weight: 600;
 }
 
 .profile-details dd {
   margin: 0;
-  color: var(--game-text);
+  color: #f3f5f8;
+  overflow-wrap: anywhere;
 }
 
 .quick-links {
@@ -1246,44 +1545,91 @@ body.game-skin {
   }
 }
 
+.game-page a.quick-link-card,
+.game-page a.quick-link-card:hover,
+.game-page a.quick-link-card:focus {
+  color: inherit;
+  text-decoration: none;
+  font-weight: inherit;
+}
+
 .quick-link-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 1rem 1.1rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.85rem;
+  row-gap: 0.15rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
   background: var(--game-bg);
-  border: 1px solid var(--game-border);
+  border: 1px solid #9aa3b2;
   border-radius: var(--game-radius-sm);
   text-decoration: none;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .quick-link-card:hover {
-  background: var(--game-accent-dim);
-  border-color: rgba(201, 162, 39, 0.35);
-  text-decoration: none;
+  background: rgba(240, 213, 106, 0.08);
+  border-color: #f0d56a;
+}
+
+.quick-link-card:focus-visible {
+  outline: 2px solid #f0d56a;
+  outline-offset: 3px;
 }
 
 .quick-link-card__icon {
-  font-size: 1.35rem;
-  line-height: 1;
+  grid-row: 1 / span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  background: rgba(240, 213, 106, 0.14);
+  color: #f0d56a;
+}
+
+.quick-link-card__icon svg {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .quick-link-card__label {
-  color: var(--game-text);
+  grid-column: 2;
+  color: #f3f5f8;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1rem;
+  line-height: 1.3;
 }
 
 .quick-link-card__hint {
-  color: var(--game-muted);
-  font-size: 0.82rem;
+  grid-column: 2;
+  color: #d7dce3;
+  font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .profile-logout {
   margin: 0;
-  padding-top: 0.5rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--game-border);
+}
+
+@media (max-width: 540px) {
+  .profile-details {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .profile-details dd {
+    margin-bottom: 0.65rem;
+  }
+
+  .profile-logout .game-btn {
+    width: 100%;
+    min-height: 2.75rem;
+  }
 }
 
 /* Chat */

@@ -1,32 +1,157 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Profile — Fools Arena{% endblock %}
 
 {% block content %}
-<div class="game-page">
+<div class="game-page profile-page">
   <section class="game-panel">
-    <h1 class="game-title">Your profile</h1>
-    <p class="game-lead">Signed in as <strong>{{ user.username }}</strong></p>
+    <div class="profile-identity">
+      <span class="profile-avatar" aria-hidden="true">
+        <span class="profile-avatar__initials">{{ initials }}</span>
+        {% if user.has_avatar %}
+        <img src="{{ user.avatar_url }}" alt="" onerror="this.remove()">
+        {% endif %}
+      </span>
+      <div class="profile-identity__text">
+        <p class="profile-kicker">Profile</p>
+        <h1 class="game-title profile-name">{{ user.username }}</h1>
+      </div>
+    </div>
 
-    <dl class="profile-details">
-      <dt>Username</dt>
-      <dd>{{ user.username }}</dd>
-      <dt>Email</dt>
-      <dd>{{ user.email|default:"—" }}</dd>
-    </dl>
-
-    <div class="quick-links">
-      <a href="{% url 'fools-lobby-list-page' %}" class="quick-link-card">
-        <span class="quick-link-card__icon" aria-hidden="true">🃏</span>
-        <span class="quick-link-card__label">Games &amp; lobbies</span>
-        <span class="quick-link-card__hint">Browse or create a table</span>
+    <div class="profile-actions">
+      {% if current_game %}
+      <a class="game-btn game-btn--primary profile-resume" href="{% url 'fools-play-page' current_game.id %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M9 7.2v9.6l8.2-4.8z"></path>
+        </svg>
+        <span>Return to game</span>
       </a>
-      <a href="{% url 'chat:inbox' %}" class="quick-link-card">
-        <span class="quick-link-card__icon" aria-hidden="true">💬</span>
-        <span class="quick-link-card__label">Messages</span>
-        <span class="quick-link-card__hint">Direct chats with players</span>
+      {% elif active_lobby %}
+      <a class="game-btn game-btn--primary profile-resume" href="{% url 'fools-lobby-detail-page' active_lobby.id %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="8.5" cy="9" r="2.1" fill="none" stroke="currentColor" stroke-width="1.75"></circle>
+          <circle cx="15.5" cy="9.6" r="1.7" fill="none" stroke="currentColor" stroke-width="1.75"></circle>
+          <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M4.2 17.2c.5-2 2.2-3.2 4.3-3.2s3.8 1.2 4.3 3.2M13.2 14.4c1.1-.5 2.4-.3 3.4.9"></path>
+        </svg>
+        <span>Return to lobby</span>
+      </a>
+      {% else %}
+      <a class="game-btn game-btn--primary profile-resume" href="{% url 'fools-lobby-list-page' %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="11" cy="11" r="5.25" fill="none" stroke="currentColor" stroke-width="1.75"></circle>
+          <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M15.2 15.2L19 19"></path>
+        </svg>
+        <span>Find a game</span>
+      </a>
+      {% endif %}
+      <a class="profile-secondary" href="{% url 'chat:inbox' %}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" d="M5 6.5h14a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H9.5L5 19.5V7.5a1 1 0 0 1 1-1z"></path>
+        </svg>
+        <span>Messages</span>
       </a>
     </div>
+
+    <section class="profile-record" aria-labelledby="profile-record-title">
+      <h2 id="profile-record-title" class="profile-section-title">Record</h2>
+      {% if stats.total_games == 0 %}
+      <p class="profile-empty">You haven't played yet.</p>
+      {% endif %}
+      <dl class="profile-stats">
+        <div>
+          <dt>Finished games</dt>
+          <dd>{{ stats.total_games }}</dd>
+        </div>
+        <div>
+          <dt>Wins</dt>
+          <dd>{{ stats.games_won }}</dd>
+        </div>
+        <div>
+          <dt>Losses</dt>
+          <dd>{{ stats.games_lost }}</dd>
+        </div>
+        <div>
+          <dt>Win rate</dt>
+          <dd>{% if stats.total_games == 0 %}<span aria-label="Not available">—</span>{% else %}{{ stats.win_rate|floatformat:"-1" }}%{% endif %}</dd>
+        </div>
+      </dl>
+      {% if stats.total_games %}
+      <p class="profile-note">In a match with three or four players, everyone except the loser counts as a winner.</p>
+      {% else %}
+      <p class="profile-note"><a href="{% url 'fools-lobby-list-page' %}">Find a game</a> when you are ready.</p>
+      {% endif %}
+    </section>
+
+    <section class="profile-account" aria-labelledby="profile-account-title">
+      <h2 id="profile-account-title" class="profile-section-title">Account</h2>
+      <p class="profile-account__email">
+        <span class="profile-account__label">Email</span>
+        {% if user.email %}
+        <span>{{ user.email }}</span>
+        {% else %}
+        <span>Not set</span>
+        {% endif %}
+      </p>
+      {% if not user.email %}
+      <p class="profile-note">Add an email so you can choose a new password from a link if you forget the current one.</p>
+      {% endif %}
+
+      <div class="profile-account__tools">
+      <details class="profile-editor" {% if open_email %}open{% endif %}>
+        <summary class="profile-toggle">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" d="M4.5 7.5h15v9.5h-15z"></path>
+            <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" d="M4.8 8l7.2 5.2L19.2 8"></path>
+          </svg>
+          <span>{% if user.email %}Change email{% else %}Add email{% endif %}</span>
+        </summary>
+        <form method="post" class="game-form game-form--stacked auth-form" data-busy-submit novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="email">
+          {% include "accounts/includes/auth_fields.html" with form=email_form %}
+          <div class="profile-editor__actions">
+            <button type="submit" class="game-btn game-btn--primary auth-submit" data-loading-label="Saving email…">
+              <span class="auth-submit__spinner" aria-hidden="true"></span>
+              <span class="auth-submit__label">Save email</span>
+            </button>
+            <a class="game-btn game-btn--secondary" href="{% url 'profile' %}">Cancel</a>
+          </div>
+        </form>
+      </details>
+
+      <details class="profile-editor" {% if open_password %}open{% endif %}>
+        <summary class="profile-toggle">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="6" y="11" width="12" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.75"></rect>
+            <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M8.5 11V8.8a3.5 3.5 0 0 1 7 0V11"></path>
+          </svg>
+          <span>Change password</span>
+        </summary>
+        {% if password_error %}
+        <div class="form-errors auth-form__banner" role="alert">
+          <p><span class="field-error__icon" aria-hidden="true">⚠</span> {{ password_error }}</p>
+        </div>
+        {% endif %}
+        {% if user.email %}
+        <form method="post" class="game-form game-form--stacked auth-form" data-busy-submit novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="password">
+          <p class="profile-note">We will email a link to {{ user.email }}. Open it to choose a new password. The current password is not required.</p>
+          <div class="profile-editor__actions">
+            <button type="submit" class="game-btn game-btn--primary auth-submit" data-loading-label="Sending link…">
+              <span class="auth-submit__spinner" aria-hidden="true"></span>
+              <span class="auth-submit__label">Send reset link</span>
+            </button>
+            <a class="game-btn game-btn--secondary" href="{% url 'profile' %}">Cancel</a>
+          </div>
+        </form>
+        {% else %}
+        <p class="profile-note">Add an email first. We email a link to choose a new password, so you can change it even if you have forgotten the current one.</p>
+        {% endif %}
+      </details>
+      </div>
+    </section>
 
     <form method="post" action="{% url 'logout' %}" class="profile-logout">
       {% csrf_token %}
@@ -34,4 +159,8 @@
     </form>
   </section>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/auth_form.js' %}?v={{ asset_auth_js_v }}"></script>
 {% endblock %}
