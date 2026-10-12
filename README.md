@@ -79,6 +79,8 @@ docker compose down
 
 Developer documentation is built with [Sphinx](https://www.sphinx-doc.org/) from the [`docs/`](docs/) directory (autodoc, Google-style docstrings via Napoleon, viewcode).
 
+Security limits, account rules, and server-side game checks are kept in [Docs/engineering-decisions.md](Docs/engineering-decisions.md). Update that file in the same change that alters one of those decisions.
+
 **Install dependencies** (includes Sphinx):
 
 ```bash

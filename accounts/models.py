@@ -7,7 +7,15 @@ the Durak multiplayer application.
 
 import uuid
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
+
+from .validators import (
+    USERNAME_MAX_LENGTH,
+    is_reserved_username,
+    validate_username_format,
+)
 
 
 class User(AbstractUser):
@@ -21,6 +29,18 @@ class User(AbstractUser):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.CharField(
+        "username",
+        max_length=USERNAME_MAX_LENGTH,
+        unique=True,
+        help_text="3–30 characters. Letters, numbers, and underscore only.",
+        validators=[validate_username_format],
+        error_messages={
+            "unique": "A user with that username already exists.",
+            "max_length": "Use %d characters or fewer." % USERNAME_MAX_LENGTH,
+        },
+    )
+    email = models.EmailField("email address", unique=True, null=True, blank=True)
     avatar_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -31,6 +51,37 @@ class User(AbstractUser):
             str: The username of the user.
         """
         return self.username
+
+    def save(self, *args, **kwargs):
+        """Store a trimmed, lowercased email, or NULL when it is empty.
+
+        Empty strings cannot share a unique column. NULL can, so accounts
+        created before email was required do not collide.
+        """
+        if self.email is not None:
+            normalized = self.email.strip().lower()
+            self.email = normalized or None
+        if self._state.adding and is_reserved_username(self.username or ""):
+            raise ValidationError({"username": "This username is reserved."})
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Reject a new account that takes a reserved username.
+
+        An account that already has a reserved name, such as an existing
+        ``admin`` user, can still be saved.
+        """
+        super().clean()
+        username = self.username or ""
+        if not is_reserved_username(username):
+            return
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values_list(
+                "username", flat=True
+            ).first()
+            if previous and previous.casefold() == username.casefold():
+                return
+        raise ValidationError({"username": "This username is reserved."})
 
     def get_full_display_name(self):
         """Return the user's display name with fallback to username.
@@ -170,6 +221,12 @@ class User(AbstractUser):
         verbose_name = 'User'
         verbose_name_plural = 'Users'
         ordering = ['username']
+        constraints = [
+            models.UniqueConstraint(
+                Lower("username"),
+                name="accounts_user_username_ci",
+            ),
+        ]
 
 
 class Block(models.Model):

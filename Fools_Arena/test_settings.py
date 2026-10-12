@@ -11,3 +11,14 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
+
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+ACCOUNT_EMAIL_CONFIRMATION_REQUIRED = True
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "accounts-tests",
+    }
+}
+ACCOUNT_EMAIL_RATE_LIMIT = 1000

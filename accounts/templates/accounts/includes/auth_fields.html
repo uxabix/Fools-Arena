@@ -18,10 +18,13 @@
   {{ field }}
   {% endif %}
   <div class="auth-field__feedback" id="{{ field.auto_id }}-feedback">{% for error in field.errors %}<p class="field-error" role="alert"><span class="field-error__icon" aria-hidden="true">⚠</span><span>{{ error }}</span></p>{% endfor %}</div>
+  {% if field.name == "password" and show_forgot_password %}
+  <p class="auth-field__extra"><a href="{% url 'password-reset' %}">Forgot password?</a></p>
+  {% endif %}
   {% if field.help_text %}
   <p class="field-hint" id="{{ field.auto_id }}-hint">{{ field.help_text }}</p>
   {% endif %}
-  {% if field.name == "password1" %}
+  {% if field.name == "password1" or field.name == "new_password1" %}
   <ul class="auth-rules" id="password-rules">
     <li class="auth-rules__item" data-rule="length" data-state="idle">
       <span class="auth-rules__mark" aria-hidden="true">○</span>

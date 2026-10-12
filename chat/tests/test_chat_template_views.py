@@ -36,6 +36,19 @@ class TestChatTemplateViews:
         assert r.status_code == 302
         assert r.url == reverse("chat:room", kwargs={"chat_id": chat.pk})
 
+    def test_start_direct_labels_are_not_nested(self, client, test_user):
+        """Each label wraps only its caption, and hints are escaped text."""
+        import re
+
+        client.force_login(test_user)
+        html = client.get(reverse("chat:start_direct")).content.decode()
+        labels = re.findall(r"<label\b[^>]*>.*?</label>", html, flags=re.I | re.S)
+        assert labels
+        for label in labels:
+            assert label.lower().count("<label") == 1
+        assert 'class="field-hint"' in html
+        assert "<ul>" not in html.split('class="field-hint"', 1)[-1][:200]
+
     def test_room_post_creates_message(self, client, test_user, second_user):
         """HTTP form post stores a message like the API."""
         client.force_login(test_user)

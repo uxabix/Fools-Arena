@@ -28,6 +28,29 @@ SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-secret-key")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
+# False skips the confirmation email so local tests can sign in immediately.
+# The process refuses to start if this is false while DEBUG is false.
+ACCOUNT_EMAIL_CONFIRMATION_REQUIRED = (
+    os.getenv("ACCOUNT_EMAIL_CONFIRMATION_REQUIRED", "True") == "True"
+)
+if not DEBUG and not ACCOUNT_EMAIL_CONFIRMATION_REQUIRED:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "ACCOUNT_EMAIL_CONFIRMATION_REQUIRED cannot be disabled when DEBUG is False."
+    )
+
+# Shared by registration, confirmation resend, and password reset.
+ACCOUNT_EMAIL_RATE_LIMIT = int(os.getenv("ACCOUNT_EMAIL_RATE_LIMIT", "5"))
+ACCOUNT_EMAIL_RATE_WINDOW = int(os.getenv("ACCOUNT_EMAIL_RATE_WINDOW", "3600"))
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://redis:6379/1"),
+    }
+}
+
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 
 
@@ -151,6 +174,18 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@foolsarena.local")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

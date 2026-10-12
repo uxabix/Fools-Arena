@@ -10,8 +10,15 @@
   if (!form) return;
 
   var mode = form.getAttribute("data-auth-form");
+  var passwordKey = mode === "reset" ? "new_password1" : "password1";
+  var confirmKey = mode === "reset" ? "new_password2" : "password2";
   var minLength = parseInt(form.getAttribute("data-password-min") || "8", 10);
   var maxLength = parseInt(form.getAttribute("data-password-max") || "128", 10);
+  var usernameMin = parseInt(form.getAttribute("data-username-min") || "3", 10);
+  var usernameMax = parseInt(form.getAttribute("data-username-max") || "30", 10);
+  var reservedNames = (form.getAttribute("data-reserved-usernames") || "")
+    .split(",")
+    .filter(Boolean);
   var revealed = {};
   var submitAttempted = false;
   var initial = {};
@@ -167,8 +174,8 @@
   }
 
   function updateRules(showFailures) {
-    if (mode !== "register") return;
-    var password = inputOf("password1");
+    if (mode !== "register" && mode !== "reset") return;
+    var password = inputOf(passwordKey);
     var value = password ? password.value : "";
     if (!value) {
       setRule("length", "idle");
@@ -181,15 +188,15 @@
       else if (identityParts().length) setRule("similar", "met");
       else setRule("similar", "idle");
     }
-    var sameAsServer = password && password.value === initial.password1 && serverMessages.password1;
+    var sameAsServer = password && password.value === initial[passwordKey] && serverMessages[passwordKey];
     if (sameAsServer) applyServerRules();
     else setRule("common", "pending");
   }
 
   function applyServerRules() {
     var messages = []
-      .concat(serverMessages.password1 || [])
-      .concat(serverMessages.password2 || []);
+      .concat(serverMessages[passwordKey] || [])
+      .concat(serverMessages[confirmKey] || []);
     var text = messages.join(" ").toLowerCase();
     if (!text) return;
     if (text.indexOf("too short") !== -1 || text.indexOf("at least") !== -1) setRule("length", "unmet");
@@ -215,32 +222,61 @@
   }
 
   function validateUsername(showFailures) {
-    var value = inputOf("username").value.trim();
+    var value = inputOf("username").value;
     if (!showFailures && !revealed.username) return true;
     if (serverStillApplies("username")) {
       showFeedback("username", serverMessages.username, "error");
       return false;
     }
-    if (!value) {
+    if (mode === "register") {
+      var problem = usernameProblem(value);
+      if (problem) {
+        showFeedback("username", [problem], "error");
+        return false;
+      }
+    } else if (!value) {
       showFeedback("username", ["Enter a username."], "error");
       return false;
     }
-    if (mode === "register") {
-      var charsetOk = true;
-      try {
-        charsetOk = /^[\p{L}\p{N}_.@+-]+$/u.test(value) && value.length <= 150;
-      } catch (err) {
-        charsetOk = value.length <= 150;
-      }
-      if (!charsetOk) {
-        showFeedback("username", [
-          "Enter a valid username. This value may contain only letters, numbers, and @/./+/-/_ characters.",
-        ], "error");
-        return false;
-      }
-    }
     clearFeedback("username");
     return true;
+  }
+
+  function usernameProblem(value) {
+    var i;
+    var code;
+    var folded;
+    var squashed;
+    if (!value) return "Enter a username.";
+    if (/\s/.test(value)) return "Usernames cannot contain spaces.";
+    for (i = 0; i < value.length; i++) {
+      code = value.charCodeAt(i);
+      if (code < 32 || code === 127 || code === 0xfeff
+          || (code >= 0x200b && code <= 0x200f)
+          || (code >= 0x202a && code <= 0x202e)
+          || code === 0x2060) {
+        return "Usernames cannot contain invisible or control characters.";
+      }
+    }
+    if (/[<>&"'`]/.test(value)) return "Usernames cannot contain HTML.";
+    if (/https?:|www\.|[/\\@]|[a-z0-9-]+\.[a-z]{2,}/i.test(value)) {
+      return "Usernames cannot contain a web address.";
+    }
+    if (!/^[A-Za-z0-9_]+$/.test(value)) {
+      return "Use only letters, numbers, and underscore.";
+    }
+    if (value.length < usernameMin) {
+      return "Use at least " + usernameMin + " characters.";
+    }
+    if (value.length > usernameMax) {
+      return "Use " + usernameMax + " characters or fewer.";
+    }
+    folded = value.toLowerCase();
+    squashed = folded.replace(/_/g, "");
+    if (reservedNames.indexOf(folded) !== -1 || reservedNames.indexOf(squashed) !== -1) {
+      return "This username is reserved.";
+    }
+    return "";
   }
 
   function validateEmail(showFailures) {
@@ -265,14 +301,14 @@
   }
 
   function validatePassword(showFailures) {
-    var name = mode === "register" ? "password1" : "password";
+    var name = mode === "login" ? "password" : passwordKey;
     var value = inputOf(name).value;
     var show = showFailures || revealed[name];
-    if (mode === "register") updateRules(show);
+    if (mode === "register" || mode === "reset") updateRules(show);
     if (!show) return true;
     if (serverStillApplies(name)) {
       showFeedback(name, serverMessages[name], "error");
-      if (mode === "register") applyServerRules();
+      if (mode === "register" || mode === "reset") applyServerRules();
       return false;
     }
     if (mode === "login") {
@@ -293,37 +329,37 @@
   }
 
   function validateConfirm(showFailures) {
-    var passwordInput = inputOf("password1");
-    var confirmInput = inputOf("password2");
+    var passwordInput = inputOf(passwordKey);
+    var confirmInput = inputOf(confirmKey);
     if (!passwordInput || !confirmInput) return true;
     var password = passwordInput.value;
     var confirm = confirmInput.value;
-    var show = showFailures || revealed.password2;
+    var show = showFailures || revealed[confirmKey];
     if (password && confirm && password === confirm) {
-      showFeedback("password2", ["Passwords match"], "ok");
+      showFeedback(confirmKey, ["Passwords match"], "ok");
       return true;
     }
-    if (serverStillApplies("password2") && passwordInput.value === initial.password1) {
-      showFeedback("password2", serverMessages.password2, "error");
+    if (serverStillApplies(confirmKey) && passwordInput.value === initial[passwordKey]) {
+      showFeedback(confirmKey, serverMessages[confirmKey], "error");
       return false;
     }
     if (!show) {
-      if (confirm !== initial.password2) clearFeedback("password2");
+      if (confirm !== initial[confirmKey]) clearFeedback(confirmKey);
       return true;
     }
     if (!confirm) {
-      showFeedback("password2", ["Confirm your password."], "error");
+      showFeedback(confirmKey, ["Confirm your password."], "error");
       return false;
     }
-    showFeedback("password2", ["Passwords do not match."], "error");
+    showFeedback(confirmKey, ["Passwords do not match."], "error");
     return false;
   }
 
   function validateField(name, showFailures) {
     if (name === "username") return validateUsername(showFailures);
     if (name === "email") return validateEmail(showFailures);
-    if (name === "password" || name === "password1") return validatePassword(showFailures);
-    if (name === "password2") return validateConfirm(showFailures);
+    if (name === "password" || name === passwordKey) return validatePassword(showFailures);
+    if (name === confirmKey) return validateConfirm(showFailures);
     return true;
   }
 
@@ -351,13 +387,17 @@
   function validateAll() {
     submitAttempted = true;
     var names = mode === "register"
-      ? ["username", "email", "password1", "password2"]
-      : ["username", "password"];
+      ? ["username", "email", passwordKey, confirmKey]
+      : mode === "reset"
+        ? [passwordKey, confirmKey]
+        : ["username", "password"];
     var ok = true;
     names.forEach(function (name) {
       var input = inputOf(name);
       if (!input) return;
-      if (name === "username" || name === "email") input.value = input.value.trim();
+      if (name === "email" || (name === "username" && mode !== "register")) {
+        input.value = input.value.trim();
+      }
       revealed[name] = true;
       if (!validateField(name, true)) ok = false;
     });
@@ -386,16 +426,18 @@
     input.addEventListener("input", function () {
       validateField(name, false);
       if (mode === "register" && (name === "username" || name === "email")) {
-        updateRules(revealed.password1 || submitAttempted);
+        updateRules(revealed[passwordKey] || submitAttempted);
         validateConfirm(false);
       }
-      if (name === "password1") validateConfirm(false);
+      if (name === passwordKey) validateConfirm(false);
     });
     input.addEventListener("blur", function () {
-      if (name === "username" || name === "email") input.value = input.value.trim();
+      if (name === "email" || (name === "username" && mode !== "register")) {
+        input.value = input.value.trim();
+      }
       revealed[name] = true;
       validateField(name, true);
-      if (name === "password1") validateConfirm(revealed.password2 || false);
+      if (name === passwordKey) validateConfirm(revealed[confirmKey] || false);
     });
   });
 

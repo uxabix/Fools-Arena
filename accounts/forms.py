@@ -12,9 +12,14 @@ Available forms:
 
 from django import forms
 from django.conf import settings
-from django.contrib.auth import password_validation
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, password_validation
+from django.contrib.auth.forms import (
+    AuthenticationForm,
+    PasswordResetForm,
+    SetPasswordForm,
+    UserCreationForm,
+)
+from .validators import USERNAME_MAX_LENGTH
 
 User = get_user_model()
 
@@ -128,10 +133,15 @@ class RegistrationForm(InvalidFieldMixin, UserCreationForm):
         super().__init__(*args, **kwargs)
         username = self.fields["username"]
         username.label = "Username"
+        username.strip = False
         username.help_text = (
-            "Letters, digits, and @ . + - _ only. Up to 150 characters."
+            "3–30 characters. Letters, numbers, and underscore only."
         )
         username.error_messages["required"] = "Enter a username."
+        username.error_messages["max_length"] = (
+            "Use %d characters or fewer." % USERNAME_MAX_LENGTH
+        )
+        username.widget.attrs.pop("maxlength", None)
         username.widget.attrs.update(
             {
                 "class": "fools-input",
@@ -174,6 +184,19 @@ class RegistrationForm(InvalidFieldMixin, UserCreationForm):
             "Re-enter your password",
             "id_password2-feedback",
         )
+
+    def clean_email(self):
+        """Return a normalized email, rejecting one that is already registered.
+
+        Registration is allowed to say the address is taken. Sign-in is not.
+
+        Returns:
+            str: Lowercased email address.
+        """
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("An account with this email already exists.")
+        return email
 
     def validate_password_for_user(self, user, password_field_name="password1"):
         """Apply length and policy checks to the password field.
@@ -249,3 +272,78 @@ class LoginForm(InvalidFieldMixin, AuthenticationForm):
         except forms.ValidationError as exc:
             self.add_error("password", exc)
             return self.cleaned_data
+
+
+class PasswordResetRequestForm(PasswordResetForm):
+    """Ask for an email without saying whether an account uses it."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        email = self.fields["email"]
+        email.label = "Email"
+        email.error_messages["required"] = "Enter your email."
+        email.error_messages["invalid"] = (
+            "Enter a valid email address, such as name@example.com."
+        )
+        email.widget.attrs.update(
+            {
+                "class": "fools-input",
+                "placeholder": "name@example.com",
+                "autocomplete": "email",
+                "autocapitalize": "none",
+                "spellcheck": "false",
+                "inputmode": "email",
+                "aria-describedby": "id_email-feedback",
+            }
+        )
+
+
+class NewPasswordForm(SetPasswordForm):
+    """Choose a new password with the same rules as registration."""
+
+    error_messages = {
+        "password_mismatch": "Passwords do not match.",
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        new_password = self.fields["new_password1"]
+        new_password.label = "New password"
+        new_password.help_text = ""
+        new_password.error_messages["required"] = "Enter a password."
+        new_password.widget = _password_widget(
+            "new-password",
+            "Enter a password",
+            "password-rules id_new_password1-feedback",
+        )
+        confirm = self.fields["new_password2"]
+        confirm.label = "Confirm password"
+        confirm.help_text = ""
+        confirm.error_messages["required"] = "Confirm your password."
+        confirm.widget = _password_widget(
+            "new-password",
+            "Re-enter your password",
+            "id_new_password2-feedback",
+        )
+
+    def validate_password_for_user(self, user, password_field_name="new_password1"):
+        """Report policy failures on the new-password field.
+
+        Django's form passes the confirmation field name. This override
+        ignores that and uses ``new_password1``, next to the requirements.
+
+        Args:
+            user: Account whose password is being replaced.
+            password_field_name (str): Ignored.
+        """
+        del password_field_name
+        password = self.cleaned_data.get("new_password1")
+        if password and len(password) > PASSWORD_MAX_LENGTH:
+            self.add_error(
+                "new_password1",
+                "Use %d characters or fewer." % PASSWORD_MAX_LENGTH,
+            )
+            return
+        super().validate_password_for_user(
+            user, password_field_name="new_password1"
+        )

@@ -18,7 +18,7 @@
         {% endfor %}
       </div>
       {% endif %}
-      {% include "accounts/includes/auth_fields.html" %}
+      {% include "accounts/includes/auth_fields.html" with show_forgot_password=True %}
       <div class="auth-form__actions">
         <button type="submit" class="game-btn game-btn--primary game-btn--block auth-submit" data-loading-label="Signing in…">
           <span class="auth-submit__spinner" aria-hidden="true"></span>

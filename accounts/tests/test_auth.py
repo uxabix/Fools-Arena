@@ -8,6 +8,7 @@ profile access behaviors.
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.urls import reverse
 
 User = get_user_model()
@@ -21,7 +22,7 @@ class TestTemplateAuth:
         """Test successful registration through UI.
 
         Sends valid registration data through a POST request to the 'register' view.
-        Ensures that the user is created and redirected to the profile page.
+        Ensures that the user is created inactive and sent to the check-email page.
 
         Args:
             client (django.test.Client): Django test client fixture.
@@ -33,8 +34,11 @@ class TestTemplateAuth:
             'password2': 'StrongPass123',
         })
         assert resp.status_code == 302
-        assert resp.url == reverse('fools-lobby-list-page')
-        assert User.objects.filter(username='maksim').exists()
+        assert resp.url == reverse('register-done')
+        user = User.objects.get(username='maksim')
+        assert user.is_active is False
+        assert len(mail.outbox) == 1
+        assert "confirm-email" in mail.outbox[0].body
 
     def test_register_invalid_password_mismatch(self, client):
         """Test registration with mismatched passwords.
@@ -60,7 +64,7 @@ class TestTemplateAuth:
     def test_login_valid(self, client, user_factory):
         """Test successful login through UI.
 
-        Verifies that valid credentials redirect the user to the profile page.
+        Verifies that valid credentials redirect the user to the lobby list.
         """
         user = user_factory(password="test123")
         resp = client.post(reverse('login'), {
@@ -165,10 +169,10 @@ class TestTemplateAuth:
             'password2': long_ok,
         }, follow=True)
         assert resp.status_code == 200
-        assert b"Account created. You are signed in." in resp.content
-        assert User.objects.filter(username='longpassuser').exists()
+        assert b"Account created. We sent a confirmation link" in resp.content
+        created = User.objects.get(username='longpassuser')
+        assert created.is_active is False
 
-        client.logout()
         too_long = "StrongPass123" + "y" * 120
         assert len(too_long) > 128
         resp = client.post(reverse('register'), {
@@ -180,6 +184,131 @@ class TestTemplateAuth:
         assert resp.status_code == 200
         assert b"Use 128 characters or fewer." in resp.content
         assert not User.objects.filter(username='toolonguser').exists()
+
+    def test_confirm_email_signs_in(self, client):
+        """Opening the confirmation link activates the account and signs in."""
+        client.post(reverse('register'), {
+            'username': 'confirmme',
+            'email': 'confirmme@example.com',
+            'password1': 'StrongPass123',
+            'password2': 'StrongPass123',
+        })
+        link = mail.outbox[0].body.split("http://testserver", 1)[1].split()[0]
+        resp = client.get(link)
+        assert resp.status_code == 302
+        assert resp.url == reverse('fools-lobby-list-page')
+        assert User.objects.get(username='confirmme').is_active is True
+
+    def test_password_reset_hides_whether_the_account_exists(self, client, user_factory):
+        """Known and unknown addresses get the same reset response."""
+        user = user_factory(password="StrongPass123", email="known@example.com")
+        known = client.post(reverse('password-reset'), {'email': user.email})
+        unknown = client.post(reverse('password-reset'), {'email': 'missing@example.com'})
+        assert known.status_code == unknown.status_code == 302
+        assert known.url == unknown.url == reverse('password-reset-done')
+        done = client.get(reverse('password-reset-done'))
+        body = done.content.decode().lower()
+        assert "if an account with that email exists" in body
+        assert "does not exist" not in body
+        assert len(mail.outbox) == 1
+        assert user.email in mail.outbox[0].to
+        link = mail.outbox[0].body.split("http://testserver", 1)[1].split()[0]
+        confirm = client.get(link, follow=True)
+        assert confirm.status_code == 200
+        assert b"Choose a new password" in confirm.content
+        saved = client.post(confirm.request["PATH_INFO"], {
+            "new_password1": "AnotherStrongPass123",
+            "new_password2": "AnotherStrongPass123",
+        })
+        assert saved.status_code == 302
+        assert saved.url == reverse("password-reset-complete")
+        finished = client.get(saved.url)
+        assert b"Password updated" in finished.content
+        user.refresh_from_db()
+        assert user.check_password("AnotherStrongPass123")
+
+    def test_username_rules(self, client, user_factory):
+        """New usernames follow length, character, reserved, and case rules."""
+        user_factory(username="player_one", password="StrongPass123")
+        cases = {
+            "ab": "Use at least 3 characters.",
+            "bad name": "Usernames cannot contain spaces.",
+            "evil.com": "Usernames cannot contain a web address.",
+            "<b>": "Usernames cannot contain HTML.",
+            "admin": "This username is reserved.",
+            "Ad_min": "This username is reserved.",
+            "Player_One": "A user with that username already exists.",
+            "ab\u200bc": "Usernames cannot contain invisible or control characters.",
+        }
+        for username, message in cases.items():
+            local = username.replace(" ", "").replace("<", "").replace(">", "")
+            resp = client.post(reverse("register"), {
+                "username": username,
+                "email": local + "@example.com",
+                "password1": "StrongPass123",
+                "password2": "StrongPass123",
+            })
+            assert message in resp.content.decode(), username
+
+    def test_confirmation_can_be_skipped_only_for_local_debug(self, client):
+        """The skip switch signs the person in, and production must refuse it."""
+        from django.test import override_settings
+
+        from accounts.checks import check_email_confirmation_required
+
+        with override_settings(ACCOUNT_EMAIL_CONFIRMATION_REQUIRED=False):
+            resp = client.post(reverse("register"), {
+                "username": "skiptest",
+                "email": "skiptest@example.com",
+                "password1": "StrongPass123",
+                "password2": "StrongPass123",
+            })
+        assert resp.status_code == 302
+        assert resp.url == reverse("fools-lobby-list-page")
+        assert User.objects.get(username="skiptest").is_active is True
+        assert mail.outbox == []
+        with override_settings(DEBUG=False, ACCOUNT_EMAIL_CONFIRMATION_REQUIRED=False):
+            assert check_email_confirmation_required(None)
+        with override_settings(DEBUG=True, ACCOUNT_EMAIL_CONFIRMATION_REQUIRED=False):
+            assert check_email_confirmation_required(None) == []
+
+    def test_email_requests_are_rate_limited(self, client, user_factory, api_client):
+        """Password reset and registration stop after the configured number of tries."""
+        from django.core.cache import cache
+        from django.test import override_settings
+
+        cache.clear()
+        user = user_factory(password="StrongPass123", email="rate@example.com")
+        with override_settings(ACCOUNT_EMAIL_RATE_LIMIT=2):
+            for _ in range(2):
+                allowed = client.post(reverse("password-reset"), {"email": "missing@example.com"})
+                assert allowed.status_code == 302
+            blocked = client.post(reverse("password-reset"), {"email": user.email})
+        assert blocked.status_code == 200
+        assert b"Too many attempts. Try again later." in blocked.content
+        assert mail.outbox == []
+        cache.clear()
+        with override_settings(ACCOUNT_EMAIL_RATE_LIMIT=1):
+            first = api_client.post(reverse("api_register"), {
+                "username": "ratelimituser",
+                "email": "ratelimit@example.com",
+                "password": "StrongPass123",
+            }, format="json")
+            second = api_client.post(reverse("api_register"), {
+                "username": "ratelimituser2",
+                "email": "ratelimit2@example.com",
+                "password": "StrongPass123",
+            }, format="json")
+        assert first.status_code == 201
+        assert second.status_code == 429
+        assert not User.objects.filter(username="ratelimituser2").exists()
+        cache.clear()
+
+    def test_login_page_links_to_password_reset(self, client):
+        """The sign-in form offers a password reset next to the password."""
+        resp = client.get(reverse('login'))
+        assert b"Forgot password?" in resp.content
+        assert reverse('password-reset').encode() in resp.content
 
 
 @pytest.mark.django_db
@@ -199,7 +328,10 @@ class TestAPIAuth:
             'password': 'StrongPass123',
         }, format='json')
         assert resp.status_code == 201
-        assert User.objects.filter(username='maksim_api').exists()
+        created = User.objects.get(username='maksim_api')
+        assert created.is_active is False
+        assert len(mail.outbox) == 1
+        assert "confirmation link" in resp.data["detail"].lower()
 
     def test_api_register_invalid(self, api_client):
         """Test API registration with invalid data.
@@ -213,6 +345,26 @@ class TestAPIAuth:
             'password': 'short',
         }, format='json')
         assert resp.status_code == 400
+
+    def test_api_register_rejects_numeric_password(self, api_client):
+        """API registration uses the same password rules as the HTML form."""
+        resp = api_client.post(reverse("api_register"), {
+            'username': 'digits',
+            'email': 'digits@example.com',
+            'password': '12345678',
+        }, format='json')
+        assert resp.status_code == 400
+        assert not User.objects.filter(username='digits').exists()
+
+    def test_api_register_rejects_bad_username(self, api_client):
+        """API registration uses the same username rules as the HTML form."""
+        resp = api_client.post(reverse("api_register"), {
+            "username": "admin",
+            "email": "admin2@example.com",
+            "password": "StrongPass123",
+        }, format="json")
+        assert resp.status_code == 400
+        assert not User.objects.filter(email="admin2@example.com").exists()
 
     def test_api_login_valid(self, api_client, user_factory):
         """Test successful API login.

@@ -1,0 +1,10 @@
+---
+description: Keep Docs/engineering-decisions.md in sync with security, limits, and game-rule changes
+alwaysApply: true
+---
+
+# Engineering decisions log
+
+When a change adds or alters rate limits, account or privacy rules, authentication, email behavior, or server-side game enforcement, update `Docs/engineering-decisions.md` in the same change.
+
+Write that file in English. State the rule, where it is enforced, and what it does not cover. Do not leave the doc describing behavior the code no longer has.

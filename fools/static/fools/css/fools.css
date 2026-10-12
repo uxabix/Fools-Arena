@@ -253,9 +253,9 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.85rem;
-  color: var(--game-muted);
-  font-weight: 500;
+  font-size: 0.95rem;
+  color: #e4e7ec;
+  font-weight: 600;
 }
 
 .game-form input[type="text"],
@@ -264,7 +264,7 @@
 .game-form select {
   padding: 0.55rem 0.75rem;
   border-radius: var(--game-radius-sm);
-  border: 1px solid var(--game-border);
+  border: 1px solid #9aa3b2;
   background: var(--game-bg);
   color: var(--game-text);
   font-size: 1rem;
@@ -273,9 +273,10 @@
 
 .game-form input:focus,
 .game-form select:focus {
-  outline: none;
-  border-color: var(--game-accent);
-  box-shadow: 0 0 0 2px var(--game-accent-dim);
+  outline: 2px solid #f0d56a;
+  outline-offset: 2px;
+  border-color: #f0d56a;
+  box-shadow: none;
 }
 
 .game-form label.game-form__check {
@@ -1162,7 +1163,7 @@ body.game-skin {
   box-sizing: border-box;
   padding: 0.55rem 0.75rem;
   border-radius: var(--game-radius-sm);
-  border: 1px solid var(--game-border);
+  border: 1px solid #9aa3b2;
   background: var(--game-bg);
   color: var(--game-text);
   font-size: 1rem;
@@ -1175,9 +1176,10 @@ body.game-skin {
 .game-form textarea:focus,
 .game-chat-form input:focus,
 .game-chat-form textarea:focus {
-  outline: none;
-  border-color: var(--game-accent);
-  box-shadow: 0 0 0 2px var(--game-accent-dim);
+  outline: 2px solid #f0d56a;
+  outline-offset: 2px;
+  border-color: #f0d56a;
+  box-shadow: none;
 }
 
 .game-input--textarea {
@@ -1469,6 +1471,21 @@ body.game-skin {
 
 .auth-form .auth-field__reveal svg[hidden] {
   display: none;
+}
+
+.auth-form .auth-field__extra {
+  margin: 0.35rem 0 0;
+  text-align: right;
+}
+
+.auth-form .auth-field__extra a {
+  color: #f0d56a;
+  font-weight: 600;
+}
+
+.auth-form .auth-field__extra a:focus-visible {
+  outline: 2px solid #f0d56a;
+  outline-offset: 2px;
 }
 
 .auth-form .auth-field__feedback:empty {
