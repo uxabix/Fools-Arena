@@ -12,6 +12,7 @@ from fools.models import Card, Game, GamePlayer, Lobby, LobbyPlayer, LobbySettin
 from fools.services import (
     GameError,
     create_lobby,
+    abandon_game,
     leave_lobby,
     set_ready,
     start_game,
@@ -112,7 +113,7 @@ class TestBotSeating:
         set_ready(lobby, second_user, True)
         game = start_game(lobby, test_user)
         with pytest.raises(GameError) as exc:
-            transfer_attack(game, second_user, game.trump_card_id)
+            transfer_attack(game, second_user, [game.trump_card_id])
         assert exc.value.code == "rules"
 
 
@@ -199,3 +200,39 @@ def test_last_human_leaving_closes_the_lobby(test_user, durak_deck_36):
     assert game.status == "finished"
     assert game.loser_id == test_user.id
     assert not lobby.players.exclude(status="left").exists()
+
+
+@pytest.mark.django_db
+def test_leaving_the_match_drops_the_last_human(test_user, durak_deck_36):
+    """Forfeiting a bot table closes the lobby instead of keeping the human in it."""
+    lobby = create_lobby(
+        test_user,
+        "bot-table",
+        is_private=False,
+        max_players=2,
+        fill_with_bots=True,
+    )
+    set_ready(lobby, test_user, True)
+    game = start_game(lobby, test_user)
+    abandon_game(game, test_user)
+    lobby.refresh_from_db()
+    assert lobby.status == "closed"
+    assert not lobby.players.filter(user=test_user).exclude(status="left").exists()
+
+
+@pytest.mark.django_db
+def test_leaving_the_match_removes_you_while_others_stay(test_user, second_user, durak_deck_36):
+    """Leaving the table drops that player even when another human remains."""
+    from fools.services import join_lobby
+
+    lobby = create_lobby(test_user, "stay-behind", is_private=False, max_players=3)
+    join_lobby(lobby, second_user)
+    set_ready(lobby, test_user, True)
+    set_ready(lobby, second_user, True)
+    game = start_game(lobby, test_user)
+    abandon_game(game, test_user)
+    lobby.refresh_from_db()
+    assert lobby.status == "waiting"
+    assert lobby.owner_id == second_user.id
+    assert not lobby.players.filter(user=test_user).exclude(status="left").exists()
+    assert lobby.players.filter(user=second_user).exclude(status="left").exists()

@@ -30,6 +30,7 @@ from fools.services import (
     set_ready,
     start_game,
     take_table,
+    transfer_attack,
 )
 
 User = get_user_model()
@@ -456,3 +457,49 @@ def test_take_waits_until_the_attacker_is_done(durak_deck_36, user_factory):
     assert game.runtime_state["phase"] == PHASE_BETWEEN
     assert not TableCard.objects.filter(fools=game).exists()
     assert PlayerHand.objects.filter(fools=game, player=defender, card=attack).exists()
+
+
+@pytest.mark.django_db
+def test_transfer_passes_the_attack_to_the_next_player(durak_deck_36, user_factory):
+    """A same-rank pass makes the next seat the defender and keeps the attacker."""
+    attacker = user_factory(username="pass_a")
+    defender = user_factory(username="pass_b")
+    nxt = user_factory(username="pass_c")
+    lobby = Lobby.objects.create(owner=attacker, name="transfer", status="playing")
+    LobbySettings.objects.create(
+        lobby=lobby, max_players=3, card_count=36, is_transferable=True
+    )
+    trump = Card.objects.filter(special_card__isnull=True, rank__value=14).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_BUILD,
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender, nxt), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=0)
+    sixes = list(Card.objects.filter(rank__value=6, special_card__isnull=True)[:3])
+    filler = list(
+        Card.objects.filter(special_card__isnull=True).exclude(
+            id__in=[card.id for card in sixes] + [trump.id]
+        )[:4]
+    )
+    TableCard.objects.create(fools=game, attack_card=sixes[0])
+    PlayerHand.objects.create(fools=game, player=defender, card=sixes[1], order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=defender, card=sixes[2], order_in_hand=2)
+    for index, card in enumerate(filler[:3]):
+        PlayerHand.objects.create(fools=game, player=nxt, card=card, order_in_hand=index + 1)
+    PlayerHand.objects.create(fools=game, player=attacker, card=filler[3], order_in_hand=1)
+
+    transfer_attack(game, defender, [sixes[1].id, sixes[2].id])
+    game.refresh_from_db()
+    assert game.runtime_state["attacker_id"] == str(attacker.id)
+    assert game.runtime_state["defender_id"] == str(nxt.id)
+    assert TableCard.objects.filter(fools=game).count() == 3
+
+    with pytest.raises(GameError):
+        transfer_attack(game, nxt, [filler[0].id])

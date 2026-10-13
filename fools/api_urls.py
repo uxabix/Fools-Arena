@@ -21,6 +21,7 @@ urlpatterns = [
     path("games/<uuid:game_id>/seal/", api_views.GameSealAPI.as_view(), name="api-fools-seal"),
     path("games/<uuid:game_id>/defend/", api_views.GameDefendAPI.as_view(), name="api-fools-defend"),
     path("games/<uuid:game_id>/take/", api_views.GameTakeAPI.as_view(), name="api-fools-take"),
+    path("games/<uuid:game_id>/transfer/", api_views.GameTransferAPI.as_view(), name="api-fools-transfer"),
     path("games/<uuid:game_id>/pass/", api_views.GamePassAPI.as_view(), name="api-fools-pass"),
     path("games/<uuid:game_id>/bito/", api_views.GameBitoAPI.as_view(), name="api-fools-bito"),
     path("games/<uuid:game_id>/leave/", api_views.GameLeaveAPI.as_view(), name="api-fools-leave"),

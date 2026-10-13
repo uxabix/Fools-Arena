@@ -24,6 +24,9 @@
         </div>
 
         <aside class="play-side-actions" aria-label="Actions">
+          <button type="button" id="btn-transfer" class="game-btn game-btn--secondary play-action-btn" hidden>
+            Pass attack
+          </button>
           <button type="button" id="btn-take" class="game-btn game-btn--secondary play-action-btn" hidden>
             Take cards
           </button>
@@ -42,11 +45,22 @@
       <p id="play-hint" class="play-hint" role="status"></p>
       <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
       <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
-      <p class="play-hand-help">Click a card to toggle selecting cards of the same rank. Drag to the felt to attack or add cards; drag onto an uncovered attack card to defend.</p>
+      <p class="play-hand-help">Click a card to select it. Drag onto the felt to attack or add cards, and onto an uncovered attack to beat it. When transfer is allowed, select cards of the attack rank and press Pass attack, or drag them onto the felt.</p>
     </footer>
   </div>
 
   <ol id="play-history" class="play-history" aria-label="Recent actions"></ol>
+
+  <section id="play-chat" class="game-panel play-chat" hidden>
+    <h2 class="game-subtitle">Table chat</h2>
+    <div id="play-chat-log" class="game-chat-log" aria-live="polite" aria-relevant="additions"></div>
+    <form id="play-chat-form" class="game-chat-form">
+      <input id="play-chat-input" name="content" type="text" maxlength="4000" placeholder="Message…" aria-label="Message" />
+      <button type="submit" class="game-btn game-btn--primary">Send</button>
+    </form>
+    <p id="play-chat-error" class="text-error" aria-live="polite"></p>
+  </section>
+
   <p id="err" class="text-error" aria-live="polite"></p>
 
   <dialog id="leave-game-dialog" class="lobby-dialog" aria-labelledby="leave-game-title">

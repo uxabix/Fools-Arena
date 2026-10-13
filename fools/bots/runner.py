@@ -489,7 +489,7 @@ def _apply(game, action):
         return
     if isinstance(action, TransferAttack):
         user = game.players.get(user_id=action.user_id).user
-        transfer_attack(game, user, action.card_id)
+        transfer_attack(game, user, [action.card_id])
         return
     if isinstance(action, TakeCards):
         user = game.players.get(user_id=action.user_id).user

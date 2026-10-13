@@ -586,6 +586,57 @@
     return labels;
   }
 
+  function singleAttackRank() {
+    var table = state.table || [];
+    if (!table.length || table.some(function (row) { return row.defense; })) return null;
+    var rank = table[0].attack && table[0].attack.value;
+    if (rank == null) return null;
+    if (table.some(function (row) { return !row.attack || row.attack.value !== rank; })) return null;
+    return rank;
+  }
+
+  function nextSeat(playerId) {
+    var circle = (state.players || []).slice().sort(function (a, b) {
+      return a.seat_position - b.seat_position;
+    });
+    var index = circle.findIndex(function (row) {
+      return String(row.user_id) === String(playerId);
+    });
+    if (index < 0 || circle.length < 2) return null;
+    return circle[(index + 1) % circle.length];
+  }
+
+  function transferRoom(extra) {
+    if (!state.transferable) return false;
+    var rt = state.runtime || {};
+    if (rt.phase !== "build" && rt.phase !== "defend") return false;
+    if (singleAttackRank() == null) return false;
+    var next = nextSeat(rt.defender_id);
+    if (!next || String(next.user_id) === String(rt.defender_id)) return false;
+    return (next.cards_remaining || 0) >= ((state.table || []).length + extra);
+  }
+
+  function selectedPassIds(me) {
+    var rank = singleAttackRank();
+    if (rank == null || !me || !me.hand) return [];
+    return me.hand.filter(function (card) {
+      return selected.has(card.id) && card.value === rank;
+    }).map(function (card) { return card.id; });
+  }
+
+  function postTransfer(ids) {
+    if (!ids || !ids.length) return;
+    setErr("");
+    announceMine("transfer");
+    api("POST", BASE + "transfer/", { card_ids: ids })
+      .then(function (s) {
+        return applyState(s, true);
+      })
+      .catch(function (e) {
+        setErr(e.message);
+      });
+  }
+
   function hintText(uid, me, rt) {
     if (state.status === "finished") return "";
     if (!rt) return "";
@@ -612,6 +663,18 @@
     if (taking) {
       var waiting = (rt.pending_ids || [])[0];
       return waiting ? "Waiting for " + nameOf(waiting) + " to finish throwing." : "Waiting.";
+    }
+    if (wave && isDef && open > 0 && transferRoom(1)) {
+      var passRank = singleAttackRank();
+      var passName = "";
+      (state.table || []).some(function (row) {
+        if (row.attack && row.attack.value === passRank) {
+          passName = rankShort(row.attack.rank);
+          return true;
+        }
+        return false;
+      });
+      return "Pass the attack with " + (passName || "a matching card") + ", beat the cards, or press Take cards.";
     }
     if (wave && isDef && open > 0) {
       return "Beat " + open + (open === 1 ? " more card" : " more cards") + ", or press Take cards.";
@@ -642,6 +705,7 @@
     var wave = rt.phase === "build" || rt.phase === "defend" || rt.phase === "taking";
     if (rt.phase === "between") return isAtt;
     if (rt.phase !== "taking" && isDef && openCount() > 0) {
+      if (transferRoom(1) && card.value === singleAttackRank()) return true;
       return (state.table || []).some(function (row) {
         return !row.defense && canBeatCard(card, row.attack, trumpSuit);
       });
@@ -656,11 +720,24 @@
     var take = document.getElementById("btn-take");
     var bito = document.getElementById("btn-bito");
     var done = document.getElementById("btn-done");
+    var pass = document.getElementById("btn-transfer");
     function once(btn, handler) {
       if (!btn || btn.dataset.wired === "1") return;
       btn.dataset.wired = "1";
       btn.addEventListener("click", handler);
     }
+    once(pass, function () {
+      var me = (state.players || []).find(function (row) {
+        return String(row.user_id) === uidStr();
+      });
+      var ids = selectedPassIds(me);
+      if (!ids.length || !transferRoom(ids.length)) {
+        setErr("Select cards of the attack rank to pass.");
+        return;
+      }
+      pass.disabled = true;
+      postTransfer(ids);
+    });
     once(take, function () {
       setErr("");
       announceMine("take");
@@ -706,6 +783,11 @@
     var takeBtn = document.getElementById("btn-take");
     var bitoBtn = document.getElementById("btn-bito");
     var doneBtn = document.getElementById("btn-done");
+    var passBtn = document.getElementById("btn-transfer");
+    var me = (state.players || []).find(function (row) {
+      return String(row.user_id) === String(uid);
+    });
+    var passIds = selectedPassIds(me);
     var inProg = state.status === "in_progress";
     var wave = rt.phase === "build" || rt.phase === "defend";
     var tbl = state.table || [];
@@ -728,6 +810,69 @@
       doneBtn.disabled = false;
       doneBtn.setAttribute("aria-disabled", "false");
     }
+    if (passBtn) {
+      var canPass = show && isDef && transferRoom(1);
+      passBtn.hidden = !canPass;
+      passBtn.disabled = !(canPass && passIds.length > 0 && transferRoom(passIds.length));
+      passBtn.setAttribute("aria-disabled", passBtn.disabled ? "true" : "false");
+    }
+  }
+
+  var tableChatReady = false;
+
+  function ensureTableChat(lobbyId) {
+    if (tableChatReady || !lobbyId) return;
+    tableChatReady = true;
+    var section = document.getElementById("play-chat");
+    var log = document.getElementById("play-chat-log");
+    var form = document.getElementById("play-chat-form");
+    var input = document.getElementById("play-chat-input");
+    var error = document.getElementById("play-chat-error");
+    if (!section || !log || !form || !input) return;
+    section.hidden = false;
+    var url = "/api/fools/lobbies/" + lobbyId + "/messages/";
+
+    function appendMessage(message) {
+      if (!message || !message.id) return;
+      if (log.querySelector('[data-id="' + message.id + '"]')) return;
+      var line = document.createElement("div");
+      line.className = "game-chat-line";
+      line.dataset.id = message.id;
+      line.textContent = (message.username || "Player") + ": " + (message.content || "");
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    api("GET", url).then(function (rows) {
+      (rows || []).forEach(appendMessage);
+    }).catch(function (e) {
+      if (error) error.textContent = e.message || "Could not load chat.";
+    });
+
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var content = input.value.trim();
+      if (!content) return;
+      if (error) error.textContent = "";
+      api("POST", url, { content: content }).then(function (message) {
+        input.value = "";
+        appendMessage(message);
+      }).catch(function (e) {
+        if (error) error.textContent = e.message || "Could not send.";
+      });
+    });
+
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    var socket = new WebSocket(proto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
+    socket.onmessage = function (ev) {
+      var message = null;
+      try {
+        message = JSON.parse(ev.data);
+      } catch (ignore) {
+        message = null;
+      }
+      if (message && message.event === "lobby_chat") appendMessage(message.payload || {});
+    };
   }
 
   function render(previousTable) {
@@ -745,6 +890,7 @@
     var back = document.getElementById("back-lobby");
     if (back) back.href = "/fools/lobbies/" + state.lobby_id + "/";
 
+    ensureTableChat(state.lobby_id);
     renderStatusbar(uid, me, rt);
     renderMyRole(uid, rt);
     renderOpponents(uid, rt);
@@ -786,6 +932,7 @@
             if (selected.has(c.id)) selected.delete(c.id);
             else selected.add(c.id);
             wrap.classList.toggle("is-selected", selected.has(c.id));
+            updateActionButtons(uid, rt);
           });
           wrap.addEventListener("dragstart", function (ev) {
             var ids = attackPayloadFromDrag(c.id);
@@ -891,6 +1038,7 @@
     var cards = (payload.cards || []).map(cardFace).filter(Boolean).join(", ");
     if (payload.action === "attack") return "Threw " + cards;
     if (payload.action === "defend") return "Beat " + cards;
+    if (payload.action === "transfer") return cards ? "Passed " + cards : "Passed the attack";
     return ACTION_LABEL[payload.action] || "Played";
   }
 
@@ -1008,11 +1156,26 @@
         state.status === "in_progress" &&
         (rt.phase === "between" || canThrow) &&
         (rt.phase === "between" ? isAtt : !isDef);
-      if (allowMat) {
+      var allowPass = state.status === "in_progress" && isDef && transferRoom(1);
+      if (allowMat || allowPass) {
         mat.ondrop = function (ev) {
           ev.preventDefault();
           var ids = getDragCardIds(ev);
           if (!ids || !ids.length) return;
+          var rank = singleAttackRank();
+          var passing = allowPass && me && me.hand && ids.every(function (id) {
+            var card = me.hand.find(function (item) { return item.id === id; });
+            return card && card.value === rank;
+          });
+          if (passing) {
+            if (!transferRoom(ids.length)) {
+              setErr("The next player cannot take that many cards.");
+              return;
+            }
+            postTransfer(ids);
+            return;
+          }
+          if (!allowMat) return;
           setErr("");
           api("POST", BASE + "attack/", { card_ids: ids })
             .then(function (s) {
@@ -1035,14 +1198,29 @@
           if (!ids || !ids.length) return;
           var tid = rowEl.dataset.tableCardId;
           if (!tid) return;
-          setErr("");
-          api("POST", BASE + "defend/", { table_card_id: tid, card_id: ids[0] })
-            .then(function (s) {
-              return applyState(s, true);
-            })
-            .catch(function (e) {
-              setErr(e.message);
-            });
+          var trumpSuit = state.trump_card ? state.trump_card.suit : null;
+          var card = me && me.hand && me.hand.find(function (item) { return item.id === ids[0]; });
+          var row = (state.table || []).find(function (item) { return item.id === tid; });
+          if (card && row && canBeatCard(card, row.attack, trumpSuit)) {
+            setErr("");
+            api("POST", BASE + "defend/", { table_card_id: tid, card_id: ids[0] })
+              .then(function (s) {
+                return applyState(s, true);
+              })
+              .catch(function (e) {
+                setErr(e.message);
+              });
+            return;
+          }
+          var rank = singleAttackRank();
+          if (rank != null && ids.every(function (id) {
+            var held = me && me.hand && me.hand.find(function (item) { return item.id === id; });
+            return held && held.value === rank;
+          }) && transferRoom(ids.length)) {
+            postTransfer(ids);
+            return;
+          }
+          setErr("That card cannot beat this attack.");
         };
       }
     });

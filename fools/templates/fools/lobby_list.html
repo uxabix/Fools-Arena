@@ -16,6 +16,46 @@
     </div>
     <p class="lobby-lead">Public lobbies that are waiting for players. A private lobby is not shown here.</p>
 
+    <div class="lobby-tools" role="search">
+      <div class="lobby-tools__search">
+        <label class="lobby-field__label" for="lobby-search">Search</label>
+        <input id="lobby-search" type="search" placeholder="Lobby name" autocomplete="off" />
+      </div>
+      <div class="lobby-tools__sort">
+        <label class="lobby-field__label" for="lobby-sort">Sort</label>
+        <select id="lobby-sort">
+          <option value="newest">Newest</option>
+          <option value="name">Name</option>
+          <option value="seats">Most open seats</option>
+          <option value="players">Fewest players</option>
+        </select>
+      </div>
+      <div class="lobby-tools__deck">
+        <label class="lobby-field__label" for="lobby-deck">Deck</label>
+        <select id="lobby-deck">
+          <option value="">Any</option>
+          <option value="24">24 cards</option>
+          <option value="36">36 cards</option>
+          <option value="52">52 cards</option>
+        </select>
+      </div>
+      <div class="lobby-tools__checks">
+        <label class="game-form__check" for="lobby-open-seats">
+          <input id="lobby-open-seats" type="checkbox" />
+          <span>Open seats</span>
+        </label>
+        <label class="game-form__check" for="lobby-transfer">
+          <input id="lobby-transfer" type="checkbox" />
+          <span>Transfer</span>
+        </label>
+        <label class="game-form__check" for="lobby-bots">
+          <input id="lobby-bots" type="checkbox" />
+          <span>Bots</span>
+        </label>
+        <button type="button" id="lobby-clear-filters" class="game-btn game-btn--secondary">Clear</button>
+      </div>
+    </div>
+
     {% if current_lobby %}
     <div class="lobby-current game-banner game-banner--wait">
       <p>You are in <strong class="lobby-current__name">{{ current_lobby.name }}</strong>. Creating or joining another lobby takes you out of this one.</p>
@@ -31,6 +71,9 @@
     <div id="lobby-empty" class="lobby-state" hidden>
       <p>No lobbies are waiting for players.</p>
       <button type="button" id="lobby-empty-create" class="game-btn game-btn--primary">Create lobby</button>
+    </div>
+    <div id="lobby-no-match" class="lobby-state" hidden>
+      <p>No lobbies match this search.</p>
     </div>
     <ul id="lobby-list" class="lobby-list" aria-label="Public lobbies" hidden></ul>
   </section>
@@ -93,7 +136,7 @@
             <input id="id_is_transferable" name="is_transferable" type="checkbox" />
             <span>Transfer</span>
           </label>
-          <p class="field-hint">The defender may pass the attack with a card of the same rank, before anything is beaten.</p>
+          <p class="field-hint">Before anything is beaten, the defender can pass the attack to the next player with cards of the same rank.</p>
         </div>
         <div class="lobby-field" data-field="fill_with_bots">
           <label class="game-form__check" for="id_fill_with_bots">

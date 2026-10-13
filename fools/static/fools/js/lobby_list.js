@@ -34,6 +34,14 @@
   var listSocket = null;
   var reconnectTimer = 0;
   var leaveDialog = document.getElementById("leave-lobby-dialog");
+  var allLobbies = [];
+  var searchInput = document.getElementById("lobby-search");
+  var sortInput = document.getElementById("lobby-sort");
+  var deckInput = document.getElementById("lobby-deck");
+  var openSeatsInput = document.getElementById("lobby-open-seats");
+  var transferInput = document.getElementById("lobby-transfer");
+  var botsInput = document.getElementById("lobby-bots");
+  var noMatchEl = document.getElementById("lobby-no-match");
 
   function csrf() {
     var match = document.cookie.match(/csrftoken=([^;]+)/);
@@ -158,8 +166,12 @@
 
   function rulesText(lobby) {
     var settings = lobby.settings || {};
+    var humans = lobby.human_count != null ? lobby.human_count : lobby.active_player_count;
+    var bots = lobby.bot_count || 0;
+    var seats = humans + (humans === 1 ? " player" : " players");
+    if (bots) seats += ", " + bots + (bots === 1 ? " bot" : " bots");
     var parts = [
-      lobby.active_player_count + " of " + settings.max_players + " players",
+      seats + " · " + settings.max_players + " seats",
       settings.card_count + "-card deck",
     ];
     if (settings.neighbor_throw_only) parts.push("Neighbors only");
@@ -231,6 +243,46 @@
     window.scrollTo(0, y + (next.getBoundingClientRect().top - top));
   }
 
+  function matches(lobby) {
+    var settings = lobby.settings || {};
+    var query = searchInput.value.trim().toLowerCase();
+    if (query && String(lobby.name || "").toLowerCase().indexOf(query) < 0) return false;
+    if (deckInput.value && String(settings.card_count) !== deckInput.value) return false;
+    if (openSeatsInput.checked && isFull(lobby)) return false;
+    if (transferInput.checked && !settings.is_transferable) return false;
+    if (botsInput.checked && !settings.fill_with_bots) return false;
+    return true;
+  }
+
+  function compareLobbies(a, b) {
+    var mode = sortInput.value;
+    if (mode === "name") return String(a.name).localeCompare(String(b.name));
+    if (mode === "players") {
+      var humans = (a.human_count || 0) - (b.human_count || 0);
+      return humans || String(a.name).localeCompare(String(b.name));
+    }
+    if (mode === "seats") {
+      var openA = (a.settings.max_players || 0) - (a.active_player_count || 0);
+      var openB = (b.settings.max_players || 0) - (b.active_player_count || 0);
+      return openB - openA;
+    }
+    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+  }
+
+  function visibleLobbies() {
+    return allLobbies.filter(matches).sort(compareLobbies);
+  }
+
+  function showListState(shownCount) {
+    var hasAny = allLobbies.length > 0;
+    var hasShown = shownCount > 0;
+    listEl.hidden = !hasShown;
+    emptyEl.hidden = hasAny;
+    noMatchEl.hidden = !hasAny || hasShown;
+    errorEl.hidden = true;
+    loadingEl.hidden = true;
+  }
+
   function renderList(rows) {
     var seen = {};
     preserveScroll(function () {
@@ -251,11 +303,7 @@
         if (!seen[li.dataset.lobbyId]) li.remove();
       });
     });
-    var hasRows = rows.length > 0;
-    listEl.hidden = !hasRows;
-    emptyEl.hidden = hasRows;
-    errorEl.hidden = true;
-    loadingEl.hidden = true;
+    showListState(rows.length);
   }
 
   function showLoadError(error) {
@@ -276,8 +324,8 @@
       refreshBtn.textContent = "Refreshing…";
     }
     try {
-      var rows = await api("GET", API);
-      renderList(rows || []);
+      allLobbies = await api("GET", API) || [];
+      renderList(visibleLobbies());
     } catch (error) {
       showLoadError(error);
     } finally {
@@ -342,40 +390,29 @@
   cancelBtn.addEventListener("click", closeForm);
   privateBox.addEventListener("change", syncPassword);
 
+  function rememberLobby(lobby) {
+    var index = allLobbies.findIndex(function (row) { return sameId(row.id, lobby.id); });
+    if (index >= 0) allLobbies[index] = lobby;
+    else allLobbies.unshift(lobby);
+  }
+
   function upsertLobby(lobby) {
     if (!lobby || !lobby.id || lobby.is_private || lobby.status !== "waiting") {
       if (lobby && lobby.id) removeLobby(lobby.id);
       return;
     }
-    var active = lobby.active_player_count || 0;
-    if (active < 1) {
+    var humans = lobby.human_count != null ? lobby.human_count : lobby.active_player_count || 0;
+    if (humans < 1) {
       removeLobby(lobby.id);
       return;
     }
-    var existing = rowFor(lobby.id);
-    if (existing) {
-      fillRow(existing, lobby);
-    } else {
-      var y = window.scrollY;
-      var li = buildRow();
-      listEl.hidden = false;
-      emptyEl.hidden = true;
-      loadingEl.hidden = true;
-      listEl.insertBefore(li, listEl.firstChild);
-      fillRow(li, lobby);
-      if (y > 0) window.scrollTo(0, y + li.offsetHeight);
-    }
-    listEl.hidden = false;
-    emptyEl.hidden = true;
+    rememberLobby(lobby);
+    renderList(visibleLobbies());
   }
 
   function removeLobby(id) {
-    var li = rowFor(id);
-    if (li) li.remove();
-    if (!listEl.children.length) {
-      listEl.hidden = true;
-      emptyEl.hidden = false;
-    }
+    allLobbies = allLobbies.filter(function (row) { return !sameId(row.id, id); });
+    renderList(visibleLobbies());
   }
 
   function connectList() {
@@ -455,6 +492,23 @@
       submitLabel.textContent = "Create lobby";
     }
   });
+
+  function clearFilters() {
+    searchInput.value = "";
+    sortInput.value = "newest";
+    deckInput.value = "";
+    openSeatsInput.checked = false;
+    transferInput.checked = false;
+    botsInput.checked = false;
+    renderList(visibleLobbies());
+    searchInput.focus();
+  }
+
+  [searchInput, sortInput, deckInput, openSeatsInput, transferInput, botsInput].forEach(function (el) {
+    el.addEventListener("input", function () { renderList(visibleLobbies()); });
+    el.addEventListener("change", function () { renderList(visibleLobbies()); });
+  });
+  document.getElementById("lobby-clear-filters").addEventListener("click", clearFilters);
 
   syncPassword();
   refresh(false);

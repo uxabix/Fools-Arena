@@ -126,7 +126,7 @@ def _announce_cards(game: Game, user: User, action: str, cards: list[Card]):
     )
 
 
-def _announce_action(game: Game, user: User, action: str):
+def _announce_action(game: Game, user: User, action: str, cards: list[Card] | None = None):
     """Tell the table who is about to take, pass, or end the wave, then pause.
 
     The cards stay put until the caller changes them. ``TABLE_ACTION_DELAY``
@@ -136,16 +136,16 @@ def _announce_action(game: Game, user: User, action: str):
         game: Match being shown.
         user: Seat the label belongs to.
         action: ``take``, ``bito``, or ``transfer``.
+        cards: Cards named on a transfer. Omitted for take and bito.
     """
-    broadcast_game(
-        game.id,
-        "play_announce",
-        {
-            "action": action,
-            "user_id": str(user.id),
-            "username": user.username,
-        },
-    )
+    payload = {
+        "action": action,
+        "user_id": str(user.id),
+        "username": user.username,
+    }
+    if cards:
+        payload["cards"] = [_card_json(card) for card in cards]
+    broadcast_game(game.id, "play_announce", payload)
     delay = float(getattr(django_settings, "TABLE_ACTION_DELAY", 0))
     if delay > 0:
         time.sleep(delay)
@@ -574,7 +574,7 @@ def create_lobby(
         password: Plain text; stored hashed when private.
         max_players: Upper bound enforced by :meth:`fools.models.Lobby.is_full`.
         card_count: Deck size (24, 36, or 52).
-        is_transferable: Rule flag (reserved for future transfer logic).
+        is_transferable: Defender may pass an unbeaten attack to the next seat.
         neighbor_throw_only: Restrict throw-in to defender's neighbors.
         allow_jokers: Whether jokers may appear in the shoe (requires data).
         fill_with_bots: Seat bots in empty chairs when the game starts.
@@ -843,6 +843,9 @@ def serialize_lobby(lobby: Lobby) -> dict:
         ``active_game_id``.
     """
     settings = lobby.settings
+    members = list(lobby.players.exclude(status="left").select_related("user"))
+    human_count = sum(1 for row in members if not row.user.is_bot)
+    bot_count = sum(1 for row in members if row.user.is_bot)
     return {
         "id": str(lobby.id),
         "name": lobby.name,
@@ -861,16 +864,19 @@ def serialize_lobby(lobby: Lobby) -> dict:
         },
         "players": [
             {
-                "user_id": str(p.user_id),
-                "username": p.user.username,
-                "status": p.status,
+                "user_id": str(row.user_id),
+                "username": row.user.username,
+                "status": row.status,
+                "is_bot": row.user.is_bot,
             }
-            for p in lobby.players.exclude(status="left").select_related("user")
+            for row in members
         ],
         "active_game_id": _active_game_id(lobby),
         "can_start": lobby.can_start_game(),
-        "ready_count": lobby.players.filter(status="ready").count(),
-        "active_player_count": lobby.players.exclude(status="left").count(),
+        "ready_count": sum(1 for row in members if row.status == "ready"),
+        "active_player_count": len(members),
+        "human_count": human_count,
+        "bot_count": bot_count,
     }
 
 
@@ -930,6 +936,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
         "id": str(game.id),
         "lobby_id": str(game.lobby_id),
         "status": game.status,
+        "transferable": bool(game.lobby.settings.is_transferable),
         "trump_card": _card_json(trump),
         "trump_in_deck": trump_in_deck,
         "deck_remaining": deck_left,
@@ -1120,17 +1127,17 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
 
 
 @transaction.atomic
-def transfer_attack(game: Game, user: User, card_id: UUID):
-    """Pass an unbeaten attack to the next seat with a card of the same rank.
+def transfer_attack(game: Game, user: User, card_ids: list[UUID]):
+    """Pass an unbeaten attack to the next seat with cards of the same rank.
 
-    Allowed only when the lobby is transferable, nothing on the table has
-    been beaten yet, and the next player holds enough cards to receive
-    the whole attack plus the passed card.
+    Allowed only when the lobby is transferable, every attack on the table
+    shares one rank, nothing has been beaten yet, and the next player holds
+    enough cards for the pile after the pass. The original attacker stays.
 
     Args:
         game: Active game.
         user: Current defender.
-        card_id: Card from the defender's hand whose rank matches the attack.
+        card_ids: Cards from the defender's hand, all of the attack rank.
 
     Raises:
         GameError: When transfer is illegal for the rules or the position.
@@ -1151,25 +1158,32 @@ def transfer_attack(game: Game, user: User, card_id: UUID):
     if any(row.defense_card_id for row in rows):
         raise GameError("Cannot transfer after a card is beaten", "rules")
     attack_ranks = {int(row.attack_card.rank.value) for row in rows}
-    hand = PlayerHand.objects.select_related("card__rank").get(
-        fools=game, player=user, card_id=card_id
-    )
-    if int(hand.card.rank.value) not in attack_ranks:
-        raise GameError("Transfer card must match the attack rank", "cards")
+    if len(attack_ranks) != 1:
+        raise GameError("You can only pass an attack of one rank.", "rules")
+    rank = next(iter(attack_ranks))
+    cards = _cards_in_hand(game, user, card_ids)
+    for card in cards:
+        if int(card.rank.value) != rank:
+            raise GameError("Transfer cards must match the attack rank.", "cards")
     players = _player_circle(game)
     index = next(i for i, row in enumerate(players) if row.user_id == user.id)
     nxt = players[(index + 1) % len(players)]
     if nxt.user_id == user.id:
         raise GameError("Nobody to transfer to", "rules")
-    needed = len(rows) + 1
+    needed = len(rows) + len(cards)
     held = PlayerHand.objects.filter(fools=game, player_id=nxt.user_id).count()
     if held < needed:
         raise GameError("Next player cannot take the transfer", "rules")
-    _announce_action(game, user, "transfer")
-    hand.remove_from_hand()
-    table_card = TableCard.objects.create(fools=game, attack_card=hand.card)
+    cap = attack_cap(game)
+    if needed > cap:
+        raise GameError("No more than %d attacking cards on the table." % cap, "rules")
+    _announce_action(game, user, "transfer", cards)
     turn = _ensure_turn(game, user)
-    Move.objects.create(turn=turn, table_card=table_card, action_type="attack")
+    for card in cards:
+        ph = PlayerHand.objects.get(fools=game, player=user, card=card)
+        ph.remove_from_hand()
+        table_card = TableCard.objects.create(fools=game, attack_card=card)
+        Move.objects.create(turn=turn, table_card=table_card, action_type="attack")
     _save_rs(game, defender_id=str(nxt.user_id), phase=PHASE_BUILD)
     _refresh_card_counts(game)
     broadcast_game(game.id, "game_update", {})
@@ -1353,7 +1367,9 @@ def bito(game: Game, user: User):
 def abandon_game(game: Game, user: User) -> Game:
     """Forfeit an in-progress match. The leaver becomes the fool.
 
-    Other seats are returned to the lobby. A finished match is left as it is.
+    The leaver is removed from the lobby immediately, even when other
+    people are still in it. Bots do not keep a lobby open: if no human
+    remains, it is closed. A finished match is left as it is.
 
     Args:
         game: Match the player is seated in.
@@ -1377,9 +1393,23 @@ def abandon_game(game: Game, user: User) -> Game:
     game.finished_at = timezone.now()
     game.save(update_fields=["status", "loser", "finished_at"])
     lobby = game.lobby
-    lobby.status = "waiting"
-    lobby.save(update_fields=["status"])
-    LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
+    was_owner = lobby.owner_id == user.id
+    LobbyPlayer.objects.filter(lobby=lobby, user=user).update(status="left")
+    LobbyPlayer.objects.filter(lobby=lobby, status="playing").exclude(user=user).update(status="waiting")
+    if not close_lobby_if_no_humans(lobby):
+        lobby.status = "waiting"
+        update_fields = ["status"]
+        if was_owner:
+            nxt = (
+                LobbyPlayer.objects.filter(lobby=lobby, user__is_bot=False)
+                .exclude(status="left")
+                .order_by("user__username")
+                .first()
+            )
+            if nxt is not None:
+                lobby.owner = nxt.user
+                update_fields.append("owner")
+        lobby.save(update_fields=update_fields)
     broadcast_game(game.id, "game_finished", {"loser_id": str(user.id)})
     broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
     publish_lobby_list(lobby.id)

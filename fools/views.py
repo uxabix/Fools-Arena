@@ -18,6 +18,7 @@ def lobby_list_page(request):
         LobbyPlayer.objects.filter(
             user=request.user,
             status__in=["waiting", "ready", "playing"],
+            lobby__status__in=["waiting", "playing"],
         )
         .select_related("lobby")
         .first()

@@ -43,6 +43,7 @@ from fools.services import (
     set_ready,
     start_game,
     take_table,
+    transfer_attack,
 )
 
 
@@ -283,6 +284,25 @@ class GameDefendAPI(APIView):
         d = ser.validated_data
         try:
             defend(game, request.user, d["table_card_id"], d["card_id"])
+            game = _continue_bots(game)
+        except GameError as e:
+            return _err(e)
+        return Response(serialize_game(game, request.user))
+
+
+class GameTransferAPI(APIView):
+    """Defender passes an unbeaten attack to the next seat."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, game_id):
+        game = get_object_or_404(Game, id=game_id)
+        if not game.players.filter(user=request.user).exists():
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        ser = AttackSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            transfer_attack(game, request.user, ser.validated_data["card_ids"])
             game = _continue_bots(game)
         except GameError as e:
             return _err(e)
