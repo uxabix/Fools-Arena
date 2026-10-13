@@ -6,6 +6,7 @@ and :class:`chat.models.Message`; HTTP echoes are also pushed on the lobby
 WebSocket group for the fools UI.
 """
 
+from django.conf import settings as django_settings
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status
@@ -24,15 +25,18 @@ from fools.serializers import (
     LobbyMessageSerializer,
     ReadySerializer,
 )
-from fools.bots.runner import run_bots
+from fools.bots.runner import run_bots, schedule_bots
 from fools.services import (
     GameError,
+    abandon_game,
     bito,
     create_lobby,
     defend,
     join_lobby,
     leave_lobby,
+    pass_throw,
     play_attack,
+    release_finished_seats,
     seal_attack,
     serialize_game,
     serialize_lobby,
@@ -51,8 +55,11 @@ def _continue_bots(game):
     Returns:
         The same game after bot moves, if any.
     """
-    run_bots(game)
-    game.refresh_from_db()
+    if float(getattr(django_settings, "BOT_STEP_DELAY", 0)) <= 0:
+        run_bots(game)
+        game.refresh_from_db()
+        return game
+    schedule_bots(game.id)
     return game
 
 
@@ -81,8 +88,12 @@ class LobbyListCreateAPI(APIView):
             Lobby.objects.filter(status="waiting", is_private=False)
             .annotate(
                 active_n=Count("players", filter=~Q(players__status="left")),
+                human_n=Count(
+                    "players",
+                    filter=Q(players__user__is_bot=False) & ~Q(players__status="left"),
+                ),
             )
-            .filter(active_n__gt=0)
+            .filter(human_n__gt=0)
             .select_related("settings", "owner")
             .order_by("-created_at")
         )
@@ -217,6 +228,8 @@ class GameStateAPI(APIView):
                 {"detail": "Not a player in this game"},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        release_finished_seats(game)
+        game.refresh_from_db()
         return Response(serialize_game(game, request.user))
 
 
@@ -290,6 +303,38 @@ class GameTakeAPI(APIView):
             game = _continue_bots(game)
         except GameError as e:
             return _err(e)
+        return Response(serialize_game(game, request.user))
+
+
+class GamePassAPI(APIView):
+    """Thrower confirms they will not add more cards while the defender takes."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, game_id):
+        game = get_object_or_404(Game, id=game_id)
+        if not game.players.filter(user=request.user).exists():
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        try:
+            pass_throw(game, request.user)
+            game = _continue_bots(game)
+        except GameError as e:
+            return _err(e)
+        return Response(serialize_game(game, request.user))
+
+
+class GameLeaveAPI(APIView):
+    """Forfeit the match. The caller becomes the fool and the table ends."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, game_id):
+        game = get_object_or_404(Game, id=game_id)
+        try:
+            abandon_game(game, request.user)
+        except GameError as e:
+            return _err(e)
+        game.refresh_from_db()
         return Response(serialize_game(game, request.user))
 
 

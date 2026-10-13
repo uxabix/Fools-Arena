@@ -94,6 +94,16 @@ class TestGameLobbyAPI:
         other = next(p for p in detail.data["players"] if p["user_id"] != str(test_user.id))
         assert me["hand"] is not None
         assert other["hand"] is None
+        from fools.models import Card, PlayerHand
+        before = api.get(reverse("api-fools-state", kwargs={"game_id": gid})).data
+        used = set(PlayerHand.objects.filter(fools_id=gid).values_list("card_id", flat=True))
+        spare = Card.objects.filter(special_card__isnull=True).exclude(id__in=used).first()
+        hidden = PlayerHand.objects.filter(fools_id=gid, player=second_user).first()
+        hidden.card = spare
+        hidden.save(update_fields=["card"])
+        after = api.get(reverse("api-fools-state", kwargs={"game_id": gid})).data
+        assert after == before
+        assert spare.id not in {card["id"] for card in after["players"][0]["hand"] or []}
 
     def test_public_lobby_does_not_keep_a_password(self, api, test_user):
         """A public lobby ignores a password and keeps the rules that were asked for."""

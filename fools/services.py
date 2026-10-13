@@ -9,16 +9,19 @@ Typical flow:
     #. Attacker opens from ``between`` into ``build``. While the wave is on the table,
        the defender may ``defend`` or ``take_table`` at any time; the attacker and
        other players may still ``play_attack`` (throw-ins) in parallel—no separate
-       ``defend`` phase gate.
+       ``defend`` phase gate. ``take_table`` only declares the take: the cards move
+       after every player who can still throw in confirms with ``pass_throw``.
     #. After the table is fully beaten, attacker ``bito`` discards and rotates roles.
 """
 
 from __future__ import annotations
 
 import secrets
+import time
 from typing import Iterable
 from uuid import UUID
 
+from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction
@@ -48,6 +51,7 @@ User = get_user_model()
 PHASE_BUILD = "build"
 PHASE_DEFEND = "defend"
 PHASE_BETWEEN = "between"
+PHASE_TAKING = "taking"
 
 
 def rank_values_for_deck(card_count: int) -> list[int]:
@@ -92,8 +96,59 @@ def _rs(game: Game) -> dict:
 def _save_rs(game: Game, **updates):
     rs = _rs(game)
     rs.update(updates)
+    rs["version"] = int(rs.get("version") or 0) + 1
     game.runtime_state = rs
     game.save(update_fields=["runtime_state"])
+
+
+def _announce_cards(game: Game, user: User, action: str, cards: list[Card]):
+    """Publish a card that is already being placed on the table.
+
+    Only those cards are included. The rest of anyone's hand stays hidden.
+    There is no pause; taking, passing, and ending the wave use
+    :func:`_announce_action`.
+
+    Args:
+        game: Match being shown.
+        user: Seat that played the cards.
+        action: ``attack`` or ``defend``.
+        cards: Cards moving onto the table.
+    """
+    broadcast_game(
+        game.id,
+        "play_announce",
+        {
+            "action": action,
+            "user_id": str(user.id),
+            "username": user.username,
+            "cards": [_card_json(card) for card in cards],
+        },
+    )
+
+
+def _announce_action(game: Game, user: User, action: str):
+    """Tell the table who is about to take, pass, or end the wave, then pause.
+
+    The cards stay put until the caller changes them. ``TABLE_ACTION_DELAY``
+    is the pause in seconds; tests set it to zero.
+
+    Args:
+        game: Match being shown.
+        user: Seat the label belongs to.
+        action: ``take``, ``bito``, or ``transfer``.
+    """
+    broadcast_game(
+        game.id,
+        "play_announce",
+        {
+            "action": action,
+            "user_id": str(user.id),
+            "username": user.username,
+        },
+    )
+    delay = float(getattr(django_settings, "TABLE_ACTION_DELAY", 0))
+    if delay > 0:
+        time.sleep(delay)
 
 
 def _refresh_card_counts(game: Game):
@@ -226,6 +281,60 @@ def _maybe_finish_game(game: Game):
         publish_lobby_list(lobby.id)
 
 
+def release_finished_seats(game: Game):
+    """Skip players who are out once the deck is empty.
+
+    A player with no cards is not asked to open the next attack or to
+    defend it. A wave that is already on the table is left as it is, and
+    no cards are drawn here.
+
+    Args:
+        game: In-progress match, or a match that may have just ended.
+    """
+    if game.status != "in_progress":
+        return
+    if GameDeck.objects.filter(fools=game).exists():
+        return
+    _refresh_card_counts(game)
+    _maybe_finish_game(game)
+    game.refresh_from_db()
+    if game.status != "in_progress":
+        return
+    rs = _rs(game)
+    if rs.get("phase") != PHASE_BETWEEN or "attacker_id" not in rs:
+        return
+    circle = _player_circle(game)
+    holding = {row.user_id for row in circle if row.cards_remaining > 0}
+    if len(holding) < 2:
+        _maybe_finish_game(game)
+        return
+    start = next(i for i, row in enumerate(circle) if row.user_id == UUID(rs["attacker_id"]))
+    new_att = None
+    for step in range(len(circle)):
+        person = circle[(start + step) % len(circle)]
+        if person.user_id in holding:
+            new_att = person.user_id
+            break
+    seat = next(i for i, row in enumerate(circle) if row.user_id == new_att)
+    new_def = None
+    for step in range(1, len(circle)):
+        person = circle[(seat + step) % len(circle)]
+        if person.user_id in holding:
+            new_def = person.user_id
+            break
+    if new_att is None or new_def is None:
+        return
+    if str(new_att) == str(rs.get("attacker_id")) and str(new_def) == str(rs.get("defender_id")):
+        return
+    _save_rs(
+        game,
+        attacker_id=str(new_att),
+        defender_id=str(new_def),
+        phase=PHASE_BETWEEN,
+    )
+    broadcast_game(game.id, "game_update", {})
+
+
 def _rotate_roles_after_success(game: Game):
     rs = _rs(game)
     old_def = UUID(rs["defender_id"])
@@ -294,6 +403,54 @@ def _defender_hand_size(game: Game, defender_id: UUID) -> int:
     return PlayerHand.objects.filter(fools=game, player_id=defender_id).count()
 
 
+def attack_cap(game: Game) -> int:
+    """Return how many attacking cards the table may hold.
+
+    Before any card has gone to the discard pile the cap is 5.
+    After that first successful defense it is 6.
+
+    Args:
+        game: Active game.
+
+    Returns:
+        5 or 6.
+    """
+    if DiscardPile.objects.filter(fools=game).exists():
+        return 6
+    return 5
+
+
+def _reject_if_defender_cannot_cover(game: Game, defender_id: UUID, new_cards: int):
+    """Reject a throw the defender cannot cover, or that passes the table cap.
+
+    Several cards may be added at once. Uncovered attacks plus the new
+    cards must fit in the defender's current hand. Beaten attacks do not
+    spend that hand. The table also never holds more attacking cards
+    than :func:`attack_cap`.
+
+    Args:
+        game: Active game.
+        defender_id: Defender whose hand sets the limit.
+        new_cards: How many attack cards are about to be added.
+
+    Raises:
+        GameError: When the hand or the cap would be exceeded.
+    """
+    hand = _defender_hand_size(game, defender_id)
+    if _count_undefended(game) + new_cards > hand:
+        raise GameError(
+            "The defender does not have enough cards for that many.",
+            "rules",
+        )
+    cap = attack_cap(game)
+    on_table = TableCard.objects.filter(fools=game).count()
+    if on_table + new_cards > cap:
+        raise GameError(
+            "No more than %d attacking cards on the table." % cap,
+            "rules",
+        )
+
+
 def _count_undefended(game: Game) -> int:
     return TableCard.objects.filter(fools=game, defense_card__isnull=True).count()
 
@@ -301,6 +458,53 @@ def _count_undefended(game: Game) -> int:
 def _all_defended(game: Game) -> bool:
     qs = TableCard.objects.filter(fools=game)
     return qs.exists() and not qs.filter(defense_card__isnull=True).exists()
+
+
+def close_lobby_if_no_humans(lobby: Lobby) -> bool:
+    """Close a lobby that no longer has a human member.
+
+    Bots do not keep a table open. Any match still running there is
+    finished, and bot seats are marked left so those accounts can sit
+    somewhere else.
+
+    Args:
+        lobby: Lobby to inspect.
+
+    Returns:
+        True when the lobby was closed by this call.
+    """
+    humans = LobbyPlayer.objects.filter(lobby=lobby, user__is_bot=False).exclude(status="left")
+    if humans.exists():
+        return False
+    from fools.bots.runner import cancel_bots
+
+    for game in Game.objects.filter(lobby=lobby, status="in_progress"):
+        cancel_bots(game.id)
+        game.status = "finished"
+        if game.finished_at is None:
+            game.finished_at = timezone.now()
+            game.save(update_fields=["status", "finished_at"])
+        else:
+            game.save(update_fields=["status"])
+        broadcast_game(game.id, "game_finished", {"loser_id": str(game.loser_id) if game.loser_id else None})
+    LobbyPlayer.objects.filter(lobby=lobby).exclude(status="left").update(status="left")
+    if lobby.status != "closed":
+        lobby.status = "closed"
+        lobby.save(update_fields=["status"])
+    broadcast_lobby(lobby.id, "lobby_closed", {"lobby_id": str(lobby.id)})
+    publish_lobby_list(lobby.id)
+    return True
+
+
+def close_abandoned_bot_lobbies():
+    """Close every open lobby whose remaining members are only bots.
+
+    A human who already left does not count. Used before seating bots
+    so a new table can reuse accounts stuck in an empty room.
+    """
+    open_lobbies = Lobby.objects.exclude(status="closed")
+    for lobby in open_lobbies:
+        close_lobby_if_no_humans(lobby)
 
 
 def publish_lobby_list(lobby_id):
@@ -321,7 +525,7 @@ def publish_lobby_list(lobby_id):
         except Lobby.DoesNotExist:
             broadcast_lobby_list("lobby_removed", {"id": lobby_key})
             return
-        still_there = lobby.players.exclude(status="left").exists()
+        still_there = lobby.players.filter(user__is_bot=False).exclude(status="left").exists()
         if lobby.is_private or lobby.status != "waiting" or not still_there:
             broadcast_lobby_list("lobby_removed", {"id": lobby_key})
             return
@@ -445,8 +649,9 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
 def leave_lobby(lobby: Lobby, user: User) -> dict:
     """Mark every active membership of ``user`` in ``lobby`` as left.
 
-    If nobody remains, the lobby is closed. If the owner leaves but others stay,
-    ownership moves to another member (alphabetically by username).
+    If a match is still running, the leaver forfeits it. Bots do not keep
+    the lobby open: when no human remains, the lobby is closed. If the
+    owner leaves and another human stays, ownership moves to that human.
 
     Args:
         lobby: Lobby to exit.
@@ -466,19 +671,27 @@ def leave_lobby(lobby: Lobby, user: User) -> dict:
         lp.leave_lobby()
     remove_user_from_lobby_chat(lobby, user)
 
+    game = Game.objects.filter(
+        lobby=lobby, status="in_progress", players__user=user
+    ).first()
+    if game is not None:
+        abandon_game(game, user)
+
     lobby_closed = False
     new_owner_id: str | None = None
-    remaining = LobbyPlayer.objects.filter(lobby=lobby).exclude(status="left")
-    if not remaining.exists():
-        if lobby.status != "closed":
-            lobby.status = "closed"
-            lobby.save(update_fields=["status"])
+    if close_lobby_if_no_humans(lobby):
         lobby_closed = True
     elif was_owner:
-        next_lp = remaining.order_by("user__username").first()
-        lobby.owner = next_lp.user
-        lobby.save(update_fields=["owner"])
-        new_owner_id = str(next_lp.user_id)
+        next_lp = (
+            LobbyPlayer.objects.filter(lobby=lobby, user__is_bot=False)
+            .exclude(status="left")
+            .order_by("user__username")
+            .first()
+        )
+        if next_lp is not None:
+            lobby.owner = next_lp.user
+            lobby.save(update_fields=["owner"])
+            new_owner_id = str(next_lp.user_id)
 
     broadcast_lobby(lobby.id, "player_left", {"user_id": str(user.id)})
     publish_lobby_list(lobby.id)
@@ -575,6 +788,8 @@ def start_game(lobby: Lobby, user: User) -> Game:
     )
     for pos, cid in enumerate(rest):
         GameDeck.objects.create(fools=game, card_id=cid, position=pos)
+    # The trump is the bottom card. It is dealt only when the deck reaches it.
+    GameDeck.objects.create(fools=game, card_id=trump_id, position=len(rest))
 
     for seat, lp in enumerate(ready_players, start=1):
         GamePlayer.objects.create(
@@ -708,16 +923,26 @@ def serialize_game(game: Game, viewer: User) -> dict:
             }
         )
     deck_left = GameDeck.objects.filter(fools=game).count()
+    trump_in_deck = GameDeck.objects.filter(fools=game, card_id=game.trump_card_id).exists()
+    discarded = DiscardPile.objects.filter(fools=game).select_related("card__suit", "card__rank")
+    top_discard = discarded.order_by("-position", "-id").first()
     return {
         "id": str(game.id),
         "lobby_id": str(game.lobby_id),
         "status": game.status,
         "trump_card": _card_json(trump),
+        "trump_in_deck": trump_in_deck,
         "deck_remaining": deck_left,
+        "discard_count": discarded.count(),
+        "discard_top": _card_json(top_discard.card) if top_discard else None,
         "runtime": {
             "attacker_id": rs.get("attacker_id"),
             "defender_id": rs.get("defender_id"),
             "phase": rs.get("phase"),
+            "version": int(rs.get("version") or 0),
+            "pending_ids": [str(uid) for uid in pending_passers(game)]
+            if rs.get("phase") == PHASE_TAKING
+            else [],
         },
         "players": players_out,
         "table": table,
@@ -759,7 +984,7 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
         raise GameError("Game not active", "finished")
     rs = _rs(game)
     phase = rs.get("phase")
-    if phase not in (PHASE_BUILD, PHASE_BETWEEN, PHASE_DEFEND):
+    if phase not in (PHASE_BUILD, PHASE_BETWEEN, PHASE_DEFEND, PHASE_TAKING):
         raise GameError("Cannot attack now", "phase")
 
     settings = game.lobby.settings
@@ -777,12 +1002,13 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
         ranks = {c.rank_id for c in cards}
         if len(ranks) != 1:
             raise GameError("Attack cards must share rank", "cards")
+        _reject_if_defender_cannot_cover(game, defender_id, len(cards))
         _save_rs(game, phase=PHASE_BUILD)
     else:
         if user.id == defender_id:
             raise GameError("Defender cannot attack", "turn")
         if user.id != attacker_id:
-            if phase not in (PHASE_BUILD, PHASE_DEFEND):
+            if phase not in (PHASE_BUILD, PHASE_DEFEND, PHASE_TAKING):
                 raise GameError("Cannot throw in now", "phase")
             eligible = {attacker_id, defender_id}
             others = {p.user_id for p in _player_circle(game)} - eligible
@@ -802,10 +1028,7 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
                     f"allowed values: {sorted(allowed_ranks)})",
                     "cards",
                 )
-        max_cards = _defender_hand_size(game, defender_id)
-        on_table = TableCard.objects.filter(fools=game).count()
-        if on_table + len(cards) > max_cards:
-            raise GameError("Too many cards on table", "rules")
+        _reject_if_defender_cannot_cover(game, defender_id, len(cards))
 
     turn = _ensure_turn(game, user)
     for c in cards:
@@ -815,6 +1038,11 @@ def play_attack(game: Game, user: User, card_ids: list[UUID]):
         Move.objects.create(turn=turn, table_card=tc, action_type="attack")
 
     _refresh_card_counts(game)
+    if phase == PHASE_TAKING:
+        _save_rs(game, passed_ids=[])
+    else:
+        _save_rs(game)
+    _announce_cards(game, user, "attack", cards)
     broadcast_game(game.id, "game_update", {})
     _maybe_finish_game(game)
 
@@ -867,6 +1095,8 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
     rs = _rs(game)
     if UUID(rs["defender_id"]) != user.id:
         raise GameError("Only defender acts", "turn")
+    if rs.get("phase") == PHASE_TAKING:
+        raise GameError("You are already taking the cards", "phase")
     if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
         raise GameError("Not defense phase", "phase")
     tc = TableCard.objects.select_related("attack_card").get(fools=game, id=table_card_id)
@@ -883,6 +1113,8 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
     turn = _ensure_turn(game, user)
     Move.objects.create(turn=turn, table_card=tc, action_type="defend")
     _refresh_card_counts(game)
+    _save_rs(game)
+    _announce_cards(game, user, "defend", [defense_card])
     broadcast_game(game.id, "game_update", {})
     _maybe_finish_game(game)
 
@@ -933,6 +1165,7 @@ def transfer_attack(game: Game, user: User, card_id: UUID):
     held = PlayerHand.objects.filter(fools=game, player_id=nxt.user_id).count()
     if held < needed:
         raise GameError("Next player cannot take the transfer", "rules")
+    _announce_action(game, user, "transfer")
     hand.remove_from_hand()
     table_card = TableCard.objects.create(fools=game, attack_card=hand.card)
     turn = _ensure_turn(game, user)
@@ -942,12 +1175,88 @@ def transfer_attack(game: Game, user: User, card_id: UUID):
     broadcast_game(game.id, "game_update", {})
 
 
-@transaction.atomic
-def take_table(game: Game, user: User):
-    """Defender picks up the whole table; hands refill from the deck.
+def throw_seat_ids(game: Game) -> set[UUID]:
+    """Return seats that may add cards, besides the defender.
+
+    The attacker is always included. With the neighbor rule, only the
+    seats beside the defender are included as well.
 
     Args:
-        game: Active game in ``defend``.
+        game: Active game with attacker and defender set.
+
+    Returns:
+        User ids allowed to throw in.
+    """
+    rs = _rs(game)
+    attacker_id = UUID(rs["attacker_id"])
+    defender_id = UUID(rs["defender_id"])
+    settings = game.lobby.settings
+    allowed = {attacker_id}
+    others = {row.user_id for row in _player_circle(game)} - {attacker_id, defender_id}
+    if settings.neighbor_throw_only:
+        allowed |= _neighbor_user_ids(game, defender_id) & others
+    else:
+        allowed |= others
+    allowed.discard(defender_id)
+    return allowed
+
+
+def pending_passers(game: Game) -> list[UUID]:
+    """Return throwers who still must confirm during a take.
+
+    A seat with no cards is skipped. Anyone already recorded in
+    ``passed_ids`` is skipped.
+
+    Args:
+        game: Match that may be in the taking phase.
+
+    Returns:
+        User ids, in seat order, who have not confirmed.
+    """
+    if _rs(game).get("phase") != PHASE_TAKING:
+        return []
+    passed = {str(item) for item in (_rs(game).get("passed_ids") or [])}
+    pending = []
+    for row in _player_circle(game):
+        if row.user_id not in throw_seat_ids(game):
+            continue
+        if str(row.user_id) in passed:
+            continue
+        if not PlayerHand.objects.filter(fools=game, player_id=row.user_id).exists():
+            continue
+        pending.append(row.user_id)
+    return pending
+
+
+def _complete_take(game: Game, user: User):
+    """Move the table into the defender's hand and refill from the deck.
+
+    Args:
+        game: Match whose take has been confirmed.
+        user: Defender who declared the take.
+    """
+    rs = _rs(game)
+    turn = _ensure_turn(game, user)
+    for tc in TableCard.objects.filter(fools=game):
+        Move.objects.create(turn=turn, table_card=tc, action_type="pickup")
+    _clear_table_to_hand(game, user)
+    _save_rs(game, phase=PHASE_BETWEEN, passed_ids=[])
+    _draw_round_after_discard(game, UUID(rs["attacker_id"]))
+    release_finished_seats(game)
+    broadcast_game(game.id, "game_update", {})
+    _maybe_finish_game(game)
+
+
+@transaction.atomic
+def take_table(game: Game, user: User):
+    """Defender declares that they will pick up the table.
+
+    The cards stay on the table until every player who can still throw
+    in adds a card or confirms they are done. A player with no cards is
+    not asked.
+
+    Args:
+        game: Active game during the wave.
         user: Defender.
 
     Raises:
@@ -963,16 +1272,50 @@ def take_table(game: Game, user: User):
     if not TableCard.objects.filter(fools=game).exists():
         raise GameError("Table empty", "state")
 
-    turn = _ensure_turn(game, user)
-    for tc in TableCard.objects.filter(fools=game):
-        Move.objects.create(turn=turn, table_card=tc, action_type="pickup")
+    _announce_action(game, user, "take")
+    _save_rs(game, phase=PHASE_TAKING, passed_ids=[])
+    if pending_passers(game):
+        broadcast_game(game.id, "game_update", {})
+        return
+    _complete_take(game, user)
 
-    _clear_table_to_hand(game, user)
-    _save_rs(game, phase=PHASE_BETWEEN)
-    attacker = UUID(rs["attacker_id"])
-    _draw_round_after_discard(game, attacker)
-    broadcast_game(game.id, "game_update", {})
-    _maybe_finish_game(game)
+
+@transaction.atomic
+def pass_throw(game: Game, user: User):
+    """Confirm that this seat will not throw any more cards into a take.
+
+    When no eligible seat is still pending, the defender receives the table.
+
+    Args:
+        game: Match in the taking phase.
+        user: Attacker or other thrower.
+
+    Raises:
+        GameError: When this seat cannot confirm.
+    """
+    if game.status != "in_progress":
+        raise GameError("Game not active", "finished")
+    rs = _rs(game)
+    if rs.get("phase") != PHASE_TAKING:
+        raise GameError("Nobody is taking the cards", "phase")
+    if user.id not in throw_seat_ids(game):
+        raise GameError("You cannot throw in", "turn")
+    if not PlayerHand.objects.filter(fools=game, player=user).exists():
+        raise GameError("You have no cards to hold back", "turn")
+    passed = [str(item) for item in (rs.get("passed_ids") or [])]
+    if str(user.id) not in passed:
+        passed.append(str(user.id))
+        _save_rs(game, passed_ids=passed)
+    broadcast_game(
+        game.id,
+        "play_announce",
+        {"action": "pass", "user_id": str(user.id), "username": user.username},
+    )
+    if pending_passers(game):
+        broadcast_game(game.id, "game_update", {})
+        return
+    defender = game.players.get(user_id=rs["defender_id"]).user
+    _complete_take(game, defender)
 
 
 @transaction.atomic
@@ -996,9 +1339,48 @@ def bito(game: Game, user: User):
     if not _all_defended(game):
         raise GameError("Not all cards defended", "state")
 
+    _announce_action(game, user, "bito")
     _clear_table_to_discard(game)
     old_att = UUID(rs["attacker_id"])
     _rotate_roles_after_success(game)
     _draw_round_after_discard(game, old_att)
+    release_finished_seats(game)
     broadcast_game(game.id, "game_update", {})
     _maybe_finish_game(game)
+
+
+@transaction.atomic
+def abandon_game(game: Game, user: User) -> Game:
+    """Forfeit an in-progress match. The leaver becomes the fool.
+
+    Other seats are returned to the lobby. A finished match is left as it is.
+
+    Args:
+        game: Match the player is seated in.
+        user: Player who is leaving.
+
+    Returns:
+        The same game after the forfeit, when one was applied.
+
+    Raises:
+        GameError: When ``user`` is not seated.
+    """
+    if not game.players.filter(user=user).exists():
+        raise GameError("Not a player in this game", "forbidden")
+    if game.status != "in_progress":
+        return game
+    from fools.bots.runner import cancel_bots
+
+    cancel_bots(game.id)
+    game.status = "finished"
+    game.loser = user
+    game.finished_at = timezone.now()
+    game.save(update_fields=["status", "loser", "finished_at"])
+    lobby = game.lobby
+    lobby.status = "waiting"
+    lobby.save(update_fields=["status"])
+    LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
+    broadcast_game(game.id, "game_finished", {"loser_id": str(user.id)})
+    broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
+    publish_lobby_list(lobby.id)
+    return game

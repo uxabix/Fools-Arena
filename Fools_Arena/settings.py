@@ -187,6 +187,10 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@foolsarena.local")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# Pause before a trick is cleared, and between bot cards, so the table can be read.
+TABLE_ACTION_DELAY = float(os.getenv("TABLE_ACTION_DELAY", "0.85"))
+BOT_STEP_DELAY = float(os.getenv("BOT_STEP_DELAY", "0.4"))
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",

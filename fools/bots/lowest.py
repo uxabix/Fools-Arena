@@ -6,7 +6,7 @@ non-trump of the attack's rank is in hand, that card is passed on
 instead of beating. A wave that is fully beaten is closed with bito.
 """
 
-from fools.bots.actions import CallBito, DefendCard, PlayCards, TakeCards, TransferAttack
+from fools.bots.actions import CallBito, DefendCard, PassThrow, PlayCards, TakeCards, TransferAttack
 from fools.bots.state import BotState, CardView
 from fools.bots.strategy import BotStrategy
 
@@ -60,6 +60,8 @@ class LowestCardStrategy(BotStrategy):
             return PlayCards(state.actor_id, (min(state.hand, key=card_key).id,))
         if state.role == "bito":
             return CallBito(state.actor_id)
+        if state.role == "pass":
+            return PassThrow(state.actor_id)
         if state.role == "throw":
             return self._throw(state)
         if state.role == "defend":

@@ -45,3 +45,10 @@ class CallBito:
     """Attacker ends a fully defended wave."""
 
     user_id: UUID
+
+
+@dataclass(frozen=True)
+class PassThrow:
+    """Thrower confirms they will not add more cards to a take."""
+
+    user_id: UUID

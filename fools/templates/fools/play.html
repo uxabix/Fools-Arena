@@ -5,6 +5,7 @@
 <div class="game-page play-page play-page--classic">
   <header class="play-classic-bar">
     <a id="back-lobby" class="game-back" href="#">← Back to lobby</a>
+    <button type="button" id="btn-leave" class="game-btn game-btn--secondary play-leave">Leave game</button>
     <div id="play-statusbar" class="play-statusbar" aria-live="polite"></div>
   </header>
 
@@ -13,7 +14,10 @@
 
     <div class="play-felt">
       <div class="play-felt__inner">
-        <div id="deck-trump-corner" class="play-deck-trump" aria-label="Deck and trump"></div>
+        <div class="play-piles">
+          <div id="deck-trump-corner" class="play-deck-trump" aria-label="Deck"></div>
+          <div id="discard-pile" class="play-discard" aria-label="Discard pile"></div>
+        </div>
 
         <div id="table-mat" class="play-felt-center" aria-label="Table — trick area">
           <div id="table-rows" class="play-table-grid"></div>
@@ -24,21 +28,36 @@
             Take cards
           </button>
           <button type="button" id="btn-bito" class="game-btn game-btn--primary play-action-btn" hidden>
-            Discard pile
+            Beaten
+          </button>
+          <button type="button" id="btn-done" class="game-btn game-btn--primary play-action-btn" hidden>
+            Done
           </button>
         </aside>
       </div>
     </div>
 
-    <footer class="play-my-area">
+    <footer class="play-my-area" id="play-my-seat">
       <div id="play-my-role" class="play-my-role"></div>
-      <p id="play-hint" class="play-hint"></p>
+      <p id="play-hint" class="play-hint" role="status"></p>
+      <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
       <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
       <p class="play-hand-help">Click a card to toggle selecting cards of the same rank. Drag to the felt to attack or add cards; drag onto an uncovered attack card to defend.</p>
     </footer>
   </div>
 
+  <ol id="play-history" class="play-history" aria-label="Recent actions"></ol>
   <p id="err" class="text-error" aria-live="polite"></p>
+
+  <dialog id="leave-game-dialog" class="lobby-dialog" aria-labelledby="leave-game-title">
+    <h2 id="leave-game-title">Leave this game?</h2>
+    <p id="leave-game-text">You forfeit. The match ends, and you are the fool.</p>
+    <p id="leave-game-error" class="text-error" hidden></p>
+    <div class="lobby-dialog__actions">
+      <button type="button" id="leave-cancel" class="game-btn game-btn--secondary">Stay</button>
+      <button type="button" id="leave-confirm" class="game-btn game-btn--primary">Leave game</button>
+    </div>
+  </dialog>
 </div>
 <script src="{% static 'fools/js/play_table.js' %}?v={{ asset_js_v }}"></script>
 {% endblock %}
