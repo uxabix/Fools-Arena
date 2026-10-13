@@ -118,7 +118,12 @@ class Lobby(models.Model):
         if self.status != 'waiting':
             return False
         ready_players = self.players.filter(status='ready').count()
-        return ready_players >= 2
+        if ready_players >= 2:
+            return True
+        settings = getattr(self, "settings", None)
+        if settings is None or not settings.fill_with_bots:
+            return False
+        return ready_players >= 1 and settings.max_players >= 2
 
     def get_active_players(self):
         """Get all active players in the lobby.
@@ -149,6 +154,7 @@ class LobbySettings(models.Model):
     is_transferable = models.BooleanField(default=False)
     neighbor_throw_only = models.BooleanField(default=False)
     allow_jokers = models.BooleanField(default=False)
+    fill_with_bots = models.BooleanField(default=False)
     turn_time_limit = models.IntegerField(null=True, blank=True)
     special_rule_set = models.ForeignKey('SpecialRuleSet', on_delete=models.SET_NULL, null=True, blank=True)
 

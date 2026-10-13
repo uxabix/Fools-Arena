@@ -358,6 +358,7 @@ def create_lobby(
     is_transferable: bool = False,
     neighbor_throw_only: bool = False,
     allow_jokers: bool = False,
+    fill_with_bots: bool = False,
     turn_time_limit: int | None = None,
 ) -> Lobby:
     """Create a lobby, default :class:`~fools.models.LobbySettings`, and owner seat.
@@ -372,6 +373,7 @@ def create_lobby(
         is_transferable: Rule flag (reserved for future transfer logic).
         neighbor_throw_only: Restrict throw-in to defender's neighbors.
         allow_jokers: Whether jokers may appear in the shoe (requires data).
+        fill_with_bots: Seat bots in empty chairs when the game starts.
         turn_time_limit: Optional per-turn cap in seconds.
 
     Returns:
@@ -392,6 +394,7 @@ def create_lobby(
         is_transferable=is_transferable,
         neighbor_throw_only=neighbor_throw_only,
         allow_jokers=allow_jokers,
+        fill_with_bots=fill_with_bots,
         turn_time_limit=turn_time_limit,
     )
     LobbyPlayer.objects.create(lobby=lobby, user=owner, status="waiting")
@@ -520,6 +523,10 @@ def start_game(lobby: Lobby, user: User) -> Game:
         raise GameError("Only owner can start", "forbidden")
     if Game.objects.filter(lobby=lobby, status="in_progress").exists():
         raise GameError("Game already in progress", "state")
+    if lobby.settings.fill_with_bots:
+        from fools.bots.seating import fill_empty_seats
+
+        fill_empty_seats(lobby)
     if not lobby.can_start_game():
         raise GameError("Cannot start game", "precondition")
     settings = lobby.settings
@@ -634,6 +641,7 @@ def serialize_lobby(lobby: Lobby) -> dict:
             "is_transferable": settings.is_transferable,
             "neighbor_throw_only": settings.neighbor_throw_only,
             "allow_jokers": settings.allow_jokers,
+            "fill_with_bots": settings.fill_with_bots,
             "turn_time_limit": settings.turn_time_limit,
         },
         "players": [
@@ -877,6 +885,61 @@ def defend(game: Game, user: User, table_card_id: UUID, card_id: UUID):
     _refresh_card_counts(game)
     broadcast_game(game.id, "game_update", {})
     _maybe_finish_game(game)
+
+
+@transaction.atomic
+def transfer_attack(game: Game, user: User, card_id: UUID):
+    """Pass an unbeaten attack to the next seat with a card of the same rank.
+
+    Allowed only when the lobby is transferable, nothing on the table has
+    been beaten yet, and the next player holds enough cards to receive
+    the whole attack plus the passed card.
+
+    Args:
+        game: Active game.
+        user: Current defender.
+        card_id: Card from the defender's hand whose rank matches the attack.
+
+    Raises:
+        GameError: When transfer is illegal for the rules or the position.
+    """
+    if game.status != "in_progress":
+        raise GameError("Game not active", "finished")
+    settings = game.lobby.settings
+    if not settings.is_transferable:
+        raise GameError("Transfers are not allowed", "rules")
+    rs = _rs(game)
+    if UUID(rs["defender_id"]) != user.id:
+        raise GameError("Only defender may transfer", "turn")
+    if rs.get("phase") not in (PHASE_BUILD, PHASE_DEFEND):
+        raise GameError("Not defense phase", "phase")
+    rows = list(TableCard.objects.filter(fools=game).select_related("attack_card__rank"))
+    if not rows:
+        raise GameError("Table empty", "state")
+    if any(row.defense_card_id for row in rows):
+        raise GameError("Cannot transfer after a card is beaten", "rules")
+    attack_ranks = {int(row.attack_card.rank.value) for row in rows}
+    hand = PlayerHand.objects.select_related("card__rank").get(
+        fools=game, player=user, card_id=card_id
+    )
+    if int(hand.card.rank.value) not in attack_ranks:
+        raise GameError("Transfer card must match the attack rank", "cards")
+    players = _player_circle(game)
+    index = next(i for i, row in enumerate(players) if row.user_id == user.id)
+    nxt = players[(index + 1) % len(players)]
+    if nxt.user_id == user.id:
+        raise GameError("Nobody to transfer to", "rules")
+    needed = len(rows) + 1
+    held = PlayerHand.objects.filter(fools=game, player_id=nxt.user_id).count()
+    if held < needed:
+        raise GameError("Next player cannot take the transfer", "rules")
+    hand.remove_from_hand()
+    table_card = TableCard.objects.create(fools=game, attack_card=hand.card)
+    turn = _ensure_turn(game, user)
+    Move.objects.create(turn=turn, table_card=table_card, action_type="attack")
+    _save_rs(game, defender_id=str(nxt.user_id), phase=PHASE_BUILD)
+    _refresh_card_counts(game)
+    broadcast_game(game.id, "game_update", {})
 
 
 @transaction.atomic

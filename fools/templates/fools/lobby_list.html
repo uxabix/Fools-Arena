@@ -88,6 +88,20 @@
           </label>
           <p class="field-hint">Only the players sitting beside the defender can add extra cards.</p>
         </div>
+        <div class="lobby-field" data-field="is_transferable">
+          <label class="game-form__check" for="id_is_transferable">
+            <input id="id_is_transferable" name="is_transferable" type="checkbox" />
+            <span>Transfer</span>
+          </label>
+          <p class="field-hint">The defender may pass the attack with a card of the same rank, before anything is beaten.</p>
+        </div>
+        <div class="lobby-field" data-field="fill_with_bots">
+          <label class="game-form__check" for="id_fill_with_bots">
+            <input id="id_fill_with_bots" name="fill_with_bots" type="checkbox" />
+            <span>Fill empty seats with bots</span>
+          </label>
+          <p class="field-hint">When the game starts, empty seats are taken by bots that play the lowest legal card.</p>
+        </div>
       </details>
 
       <p id="create-error" class="lobby-field__error game-form__full" role="alert" hidden></p>

@@ -96,7 +96,7 @@ class TestGameLobbyAPI:
         assert other["hand"] is None
 
     def test_public_lobby_does_not_keep_a_password(self, api, test_user):
-        """A public lobby ignores a password and cannot turn transfer on."""
+        """A public lobby ignores a password and keeps the rules that were asked for."""
         api.force_login(test_user)
         response = api.post(
             reverse("api-lobby-list"),
@@ -112,7 +112,7 @@ class TestGameLobbyAPI:
         )
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["is_private"] is False
-        assert response.data["settings"]["is_transferable"] is False
+        assert response.data["settings"]["is_transferable"] is True
         from fools.models import Lobby
         lobby = Lobby.objects.get(id=response.data["id"])
         assert lobby.password_hash is None

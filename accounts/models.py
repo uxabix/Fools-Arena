@@ -41,6 +41,7 @@ class User(AbstractUser):
         },
     )
     email = models.EmailField("email address", unique=True, null=True, blank=True)
+    is_bot = models.BooleanField(default=False)
     avatar_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

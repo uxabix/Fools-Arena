@@ -24,6 +24,7 @@ from fools.serializers import (
     LobbyMessageSerializer,
     ReadySerializer,
 )
+from fools.bots.runner import run_bots
 from fools.services import (
     GameError,
     bito,
@@ -39,6 +40,20 @@ from fools.services import (
     start_game,
     take_table,
 )
+
+
+def _continue_bots(game):
+    """Let seated bots answer, then return the refreshed game.
+
+    Args:
+        game: Match a person just changed, or a match that just started.
+
+    Returns:
+        The same game after bot moves, if any.
+    """
+    run_bots(game)
+    game.refresh_from_db()
+    return game
 
 
 def _err(e: GameError):
@@ -88,6 +103,7 @@ class LobbyListCreateAPI(APIView):
                 is_transferable=d["is_transferable"],
                 neighbor_throw_only=d["neighbor_throw_only"],
                 allow_jokers=d["allow_jokers"],
+                fill_with_bots=d["fill_with_bots"],
                 turn_time_limit=d.get("turn_time_limit"),
             )
         except GameError as e:
@@ -183,6 +199,7 @@ class LobbyStartAPI(APIView):
         lobby = get_object_or_404(Lobby, id=lobby_id)
         try:
             game = start_game(lobby, request.user)
+            game = _continue_bots(game)
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user), status=status.HTTP_201_CREATED)
@@ -216,6 +233,7 @@ class GameAttackAPI(APIView):
         ser.is_valid(raise_exception=True)
         try:
             play_attack(game, request.user, ser.validated_data["card_ids"])
+            game = _continue_bots(game)
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user))
@@ -232,6 +250,7 @@ class GameSealAPI(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
         try:
             seal_attack(game, request.user)
+            game = _continue_bots(game)
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user))
@@ -251,6 +270,7 @@ class GameDefendAPI(APIView):
         d = ser.validated_data
         try:
             defend(game, request.user, d["table_card_id"], d["card_id"])
+            game = _continue_bots(game)
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user))
@@ -267,6 +287,7 @@ class GameTakeAPI(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
         try:
             take_table(game, request.user)
+            game = _continue_bots(game)
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user))
@@ -283,6 +304,7 @@ class GameBitoAPI(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
         try:
             bito(game, request.user)
+            game = _continue_bots(game)
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user))

@@ -42,7 +42,9 @@ The public list shows waiting lobbies that are not private and still have someon
 
 Signed-in users can subscribe to `ws/lobbies/` for list changes. That socket does not require membership in a lobby, and it only receives public waiting lobbies (or an id to remove). A lobby room socket still requires membership.
 
-`is_transferable` is always stored as false. Passing the attack to another player is not implemented, and the create form does not offer that rule. The list has no search or filters.
+A transferable lobby lets the defender pass the attack with a card of the same rank, before any card is beaten, and only when the next player holds enough cards to receive it. Throwing extra cards is still limited by the neighbor rule when that option is on.
+
+`fill_with_bots` seats bot accounts in the empty chairs when the owner starts. Bots cannot sign in. They play through a replaceable strategy; the built-in one always uses the lowest legal card and will transfer, throw in, defend, take, or end the wave when that action is legal. The list has no search or filters.
 
 ## Game and chat authority
 

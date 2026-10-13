@@ -46,6 +46,7 @@ class LobbyCreateSerializer(serializers.Serializer):
     )
     is_transferable = serializers.BooleanField(default=False)
     neighbor_throw_only = serializers.BooleanField(default=False)
+    fill_with_bots = serializers.BooleanField(default=False)
     allow_jokers = serializers.BooleanField(default=False)
     turn_time_limit = serializers.IntegerField(
         required=False, allow_null=True, min_value=0
@@ -54,8 +55,7 @@ class LobbyCreateSerializer(serializers.Serializer):
     def validate(self, attrs):
         """Require a password only for a private lobby.
 
-        A public lobby drops any password so it is not stored. Transfer is
-        not implemented, so that flag is always stored as false.
+        A public lobby drops any password so it is not stored.
 
         Args:
             attrs: Incoming validated fields.
@@ -72,7 +72,6 @@ class LobbyCreateSerializer(serializers.Serializer):
             )
         if not attrs.get("is_private"):
             attrs["password"] = ""
-        attrs["is_transferable"] = False
         return attrs
 
 

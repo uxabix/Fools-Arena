@@ -163,6 +163,8 @@
       settings.card_count + "-card deck",
     ];
     if (settings.neighbor_throw_only) parts.push("Neighbors only");
+    if (settings.is_transferable) parts.push("Transfer");
+    if (settings.fill_with_bots) parts.push("Bots");
     if (settings.allow_jokers) parts.push("Jokers");
     return parts.join(" · ");
   }
@@ -438,6 +440,8 @@
       max_players: Number(document.getElementById("id_max_players").value),
       card_count: Number(document.getElementById("id_card_count").value),
       neighbor_throw_only: document.getElementById("id_neighbor_throw_only").checked,
+      is_transferable: document.getElementById("id_is_transferable").checked,
+      fill_with_bots: document.getElementById("id_fill_with_bots").checked,
     };
     if (privateBox.checked) body.password = passwordInput.value;
     try {
