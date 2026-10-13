@@ -1,5 +1,5 @@
 /**
- * Classic podkidnoy Durak table: SVG cards, opponents, felt, deck + trump.
+ * Durak table: SVG cards, opponents, felt, deck and trump.
  * Drag-and-drop is only for cards (attack / throw-in / defend); other actions use buttons.
  * dataTransfer is mirrored to text/plain for browsers with limited custom MIME support.
  */
@@ -55,12 +55,18 @@
 
   function phaseEn(phase) {
     var m = {
-      between: "Break",
-      build: "Table (attack & defense)",
-      defend: "Table (legacy)",
+      between: "Opening attack",
+      build: "Attack and defense",
+      defend: "Defense",
       taking: "Taking",
     };
     return m[phase] || phase || "—";
+  }
+
+  function modeLabel() {
+    var name = state && state.transferable ? "Transfer" : "Throw-in";
+    if (state && state.neighbor_throw_only) name += ", neighbors only";
+    return name;
   }
 
   /**
@@ -264,15 +270,43 @@
     return [cardId];
   }
 
+  /** Opponents in clockwise seat order, starting with the seat after the viewer. */
   function otherPlayers(uid) {
-    return state.players
-      .slice()
-      .sort(function (a, b) {
-        return a.seat_position - b.seat_position;
-      })
-      .filter(function (p) {
+    var circle = state.players.slice().sort(function (a, b) {
+      return a.seat_position - b.seat_position;
+    });
+    var index = circle.findIndex(function (p) {
+      return String(p.user_id) === uid;
+    });
+    if (index < 0) {
+      return circle.filter(function (p) {
         return String(p.user_id) !== uid;
       });
+    }
+    var ordered = [];
+    for (var step = 1; step < circle.length; step++) {
+      ordered.push(circle[(index + step) % circle.length]);
+    }
+    return ordered;
+  }
+
+  function playerCircle() {
+    return (state.players || []).slice().sort(function (a, b) {
+      return a.seat_position - b.seat_position;
+    });
+  }
+
+  function throwNeighborIds(rt) {
+    var ids = {};
+    if (!state || !state.neighbor_throw_only || !rt || rt.defender_id == null) return ids;
+    var circle = playerCircle();
+    var index = circle.findIndex(function (row) {
+      return String(row.user_id) === String(rt.defender_id);
+    });
+    if (index < 0 || circle.length < 2) return ids;
+    ids[String(circle[(index + 1) % circle.length].user_id)] = true;
+    ids[String(circle[(index - 1 + circle.length) % circle.length].user_id)] = true;
+    return ids;
   }
 
   function playerRoleKey(playerId, rt) {
@@ -374,22 +408,41 @@
     return names;
   }
 
+  function seatPlace(index, total, playerId, uid, rt) {
+    var notes = [];
+    var defenderPassing = state.transferable && rt && String(rt.defender_id) === String(uid) &&
+      (rt.phase === "build" || rt.phase === "defend");
+    if (total === 1) notes.push("Across");
+    else if (index === 0) notes.push(defenderPassing ? "Transfer to" : "Next");
+    else if (index === total - 1) notes.push("Previous");
+    if (throwNeighborIds(rt)[String(playerId)]) notes.push("Neighbor");
+    return notes.join(" · ");
+  }
+
   function renderOpponents(uid, rt) {
     var el = document.getElementById("opponents");
     if (!el) return;
     el.innerHTML = "";
     var others = otherPlayers(uid);
     if (!others.length) return;
-    others.forEach(function (p) {
+    var caption = document.createElement("p");
+    caption.className = "play-opponents__order";
+    caption.textContent = "Clockwise from you";
+    el.appendChild(caption);
+    var row = document.createElement("div");
+    row.className = "play-opponents__row";
+    others.forEach(function (p, index) {
       var roleKey = playerRoleKey(p.user_id, rt);
       var mustAct = mustConfirm(p.user_id, rt) || (
         expectedActorId(rt) != null && String(expectedActorId(rt)) === String(p.user_id)
       );
-      var duty = roleKey === "out" ? "Out" : mustAct ? "Your turn" : "Waiting";
+      var duty = roleKey === "out" ? "Out" : mustAct ? "Playing" : "Waiting";
+      var place = seatPlace(index, others.length, p.user_id, uid, rt);
       var div = document.createElement("div");
       div.className = "play-opponent is-" + roleKey + (mustAct ? " is-acting" : " is-waiting");
       div.dataset.seat = String(p.user_id);
       var n = p.cards_remaining != null ? p.cards_remaining : 0;
+      var cardsWord = n === 1 ? " card" : " cards";
       var backs = "";
       var show = Math.min(6, Math.max(0, n));
       for (var i = 0; i < show; i++) {
@@ -407,14 +460,17 @@
         "</span>" +
         '<span class="play-opponent__meta">' +
         n +
-        " cards · " +
+        cardsWord +
+        (place ? " · " + place : "") +
+        " · " +
         duty +
         "</span></div>" +
         '<div class="play-opponent__backs">' +
         backs +
         "</div>";
-      el.appendChild(div);
+      row.appendChild(div);
     });
+    el.appendChild(row);
   }
 
   function escapeHtml(s) {
@@ -529,7 +585,7 @@
         "Game over" + (loser ? ". Fool: " + loser : "") + ".";
       return;
     }
-    var partsArr = ["Podkidnoy Durak"];
+    var partsArr = [modeLabel()];
     partsArr.push("Phase: " + phaseEn(rt && rt.phase));
     partsArr.push("Deck: " + (state.deck_remaining != null ? state.deck_remaining : 0));
     if (state.trump_card) {
@@ -548,13 +604,13 @@
     var area = document.getElementById("play-my-seat");
     if (!el) return;
     if (state.status === "finished") {
-      el.textContent = state.loser_id && String(state.loser_id) === uid
-        ? "You lost (fool)."
-        : "Round finished.";
+      el.textContent = "";
+      el.hidden = true;
       if (sign) sign.innerHTML = "";
       if (area) area.className = "play-my-area";
       return;
     }
+    el.hidden = false;
     var key = playerRoleKey(uid, rt);
     var mustAct = mustConfirm(uid, rt) || (
       expectedActorId(rt) != null && String(expectedActorId(rt)) === String(uid)
@@ -655,7 +711,7 @@
       return "Your turn — choose a card to attack.";
     }
     if (taking && mustConfirm(uid, rt)) {
-      return "The defender is taking the cards. Throw in more, or press Done.";
+      return "The defender is taking the cards. Throw in more, or press Done throwing.";
     }
     if (taking && isDef) {
       return "You are taking the cards. Waiting for the others to finish.";
@@ -674,7 +730,7 @@
         }
         return false;
       });
-      return "Pass the attack with " + (passName || "a matching card") + ", beat the cards, or press Take cards.";
+      return "Transfer with " + (passName || "a matching card") + ", beat the cards, or press Take cards.";
     }
     if (wave && isDef && open > 0) {
       return "Beat " + open + (open === 1 ? " more card" : " more cards") + ", or press Take cards.";
@@ -816,6 +872,12 @@
       passBtn.disabled = !(canPass && passIds.length > 0 && transferRoom(passIds.length));
       passBtn.setAttribute("aria-disabled", passBtn.disabled ? "true" : "false");
     }
+    var aside = document.querySelector(".play-side-actions");
+    if (aside) {
+      aside.hidden = [takeBtn, bitoBtn, doneBtn, passBtn].every(function (btn) {
+        return !btn || btn.hidden;
+      });
+    }
   }
 
   var tableChatReady = false;
@@ -926,13 +988,14 @@
           wrap.style.setProperty("--fan-rot", rot + "deg");
           wrap.style.setProperty("--fan-y", y + "px");
           wrap.style.setProperty("--fan-x", x + "px");
-          wrap.style.zIndex = String(30 - Math.abs(idx - mid));
+          wrap.style.zIndex = selected.has(c.id) ? "40" : String(30 - Math.abs(idx - mid));
           wrap.addEventListener("click", function (ev) {
             ev.preventDefault();
-            if (selected.has(c.id)) selected.delete(c.id);
-            else selected.add(c.id);
-            wrap.classList.toggle("is-selected", selected.has(c.id));
-            updateActionButtons(uid, rt);
+          if (selected.has(c.id)) selected.delete(c.id);
+          else selected.add(c.id);
+          wrap.classList.toggle("is-selected", selected.has(c.id));
+          wrap.style.zIndex = selected.has(c.id) ? "40" : String(30 - Math.abs(idx - mid));
+          updateActionButtons(uid, rt);
           });
           wrap.addEventListener("dragstart", function (ev) {
             var ids = attackPayloadFromDrag(c.id);
@@ -1017,17 +1080,25 @@
     updateActionButtons(uid, rt);
 
     var hint = document.getElementById("play-hint");
-    if (hint) hint.textContent = hintText(uid, me, rt);
+    if (hint) {
+      var hintLine = hintText(uid, me, rt);
+      hint.textContent = hintLine;
+      hint.hidden = !hintLine;
+    }
+    renderResult(uid);
     paintBadge();
   }
 
   var ACTION_LABEL = {
     take: "Took cards",
     bito: "Beaten",
-    transfer: "Passed",
-    pass: "Done",
+    transfer: "Transferred",
+    pass: "Done throwing",
   };
   var recentActions = [];
+  var badgeTimer = null;
+  var resultFocused = false;
+  var HISTORY_KEY = "fools-history:" + gameId;
 
   function cardFace(card) {
     if (!card) return "";
@@ -1038,7 +1109,7 @@
     var cards = (payload.cards || []).map(cardFace).filter(Boolean).join(", ");
     if (payload.action === "attack") return "Threw " + cards;
     if (payload.action === "defend") return "Beat " + cards;
-    if (payload.action === "transfer") return cards ? "Passed " + cards : "Passed the attack";
+    if (payload.action === "transfer") return cards ? "Transferred " + cards : "Transferred the attack";
     return ACTION_LABEL[payload.action] || "Played";
   }
 
@@ -1068,6 +1139,20 @@
       paintHistory();
     }
     paintBadge();
+    armBadgeTimer();
+  }
+
+  function loadHistory() {
+    try {
+      var raw = window.sessionStorage.getItem(HISTORY_KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) return;
+      recentActions = parsed.filter(function (line) {
+        return typeof line === "string" && line;
+      }).slice(0, 5);
+    } catch (ignore) {
+      recentActions = [];
+    }
   }
 
   function paintHistory() {
@@ -1079,6 +1164,21 @@
       item.textContent = line;
       list.appendChild(item);
     });
+    try {
+      window.sessionStorage.setItem(HISTORY_KEY, JSON.stringify(recentActions));
+    } catch (ignore) {}
+  }
+
+  function armBadgeTimer() {
+    if (badgeTimer) window.clearTimeout(badgeTimer);
+    badgeTimer = null;
+    if (!activeBadge) return;
+    var wait = Math.max(0, activeBadge.until - Date.now());
+    badgeTimer = window.setTimeout(function () {
+      badgeTimer = null;
+      activeBadge = null;
+      paintBadge();
+    }, wait);
   }
 
   function paintBadge() {
@@ -1097,15 +1197,73 @@
     seat.appendChild(badge);
   }
 
-  function animateClear(kind) {
+  function clearTarget(kind, takerId) {
+    if (kind === "take" && takerId != null) {
+      var seat = document.querySelector('.play-opponent[data-seat="' + String(takerId) + '"]');
+      if (seat) return seat;
+      var mine = document.getElementById("play-my-seat");
+      if (mine && mine.dataset.seat === String(takerId)) return mine;
+    }
+    return document.getElementById("discard-pile");
+  }
+
+  function animateClear(kind, takerId) {
     var rows = document.querySelectorAll(".play-table-pair");
     if (!rows.length) return Promise.resolve();
+    var target = clearTarget(kind, takerId);
+    var fallbackX = kind === "take" ? 0 : 120;
+    var fallbackY = kind === "take" ? 64 : -28;
     rows.forEach(function (row) {
+      var dx = fallbackX;
+      var dy = fallbackY;
+      if (target) {
+        var from = row.getBoundingClientRect();
+        var to = target.getBoundingClientRect();
+        if (from.width || from.height) {
+          dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+          dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+        }
+      }
+      row.style.setProperty("--clear-x", dx.toFixed(1) + "px");
+      row.style.setProperty("--clear-y", dy.toFixed(1) + "px");
       row.classList.add(kind === "take" ? "is-taking" : "is-discarding");
     });
     return new Promise(function (resolve) {
-      window.setTimeout(resolve, 250);
+      window.setTimeout(resolve, 450);
     });
+  }
+
+  function renderResult(uid) {
+    var panel = document.getElementById("play-result");
+    if (!panel) return;
+    if (!state || state.status !== "finished") {
+      panel.hidden = true;
+      return;
+    }
+    var title = document.getElementById("play-result-title");
+    var text = document.getElementById("play-result-text");
+    var lobby = document.getElementById("play-result-lobby");
+    var loser = null;
+    if (state.loser_id) {
+      loser = (state.players || []).find(function (p) {
+        return String(p.user_id) === String(state.loser_id);
+      });
+    }
+    var mine = state.loser_id && String(state.loser_id) === String(uid);
+    if (title) title.textContent = mine ? "You are the fool" : "Game over";
+    if (text) {
+      if (mine) text.textContent = "You lost this game. Everyone else is out.";
+      else if (loser) text.textContent = loser.username + " is the fool.";
+      else text.textContent = "This game has finished.";
+    }
+    if (lobby) {
+      lobby.href = state.lobby_id ? "/fools/lobbies/" + state.lobby_id + "/" : "/fools/";
+    }
+    panel.hidden = false;
+    if (!resultFocused && title) {
+      resultFocused = true;
+      title.focus();
+    }
   }
 
   function applyState(next, clearSelection) {
@@ -1123,10 +1281,11 @@
     if (!clearKind && prevPhase === "taking" && nextPhase === "between" && nextLen < prevLen) {
       clearKind = "take";
     }
+    var takerId = previous && previous.runtime ? previous.runtime.defender_id : null;
     pendingClear = null;
     var wait = Promise.resolve();
     if (clearKind && prevLen > 0 && nextLen < prevLen) {
-      wait = animateClear(clearKind);
+      wait = animateClear(clearKind, takerId);
     }
     return wait.then(function () {
       var previousTable = previous && previous.table ? previous.table : [];
@@ -1304,6 +1463,8 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    loadHistory();
+    paintHistory();
     wireActionButtons();
     wireLeave();
     var wsProto = location.protocol === "https:" ? "wss:" : "ws:";

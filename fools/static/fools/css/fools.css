@@ -742,14 +742,31 @@
 
 .play-page--classic .play-opponents {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem 1.1rem;
-  justify-content: center;
-  min-height: 6.5rem;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
   padding: 0.6rem;
   background: var(--game-surface);
   border-radius: var(--game-radius-sm);
   border: 1px solid var(--game-border);
+}
+
+.play-page--classic .play-opponents__order {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--game-muted);
+}
+
+.play-page--classic .play-opponents__row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.85rem 1.1rem;
+  justify-content: flex-start;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
 }
 
 .play-page--classic .play-opponent {
@@ -828,11 +845,11 @@
 }
 
 .play-page--classic .play-table-pair.is-taking {
-  animation: play-take 0.24s ease forwards;
+  animation: play-take 0.42s ease forwards;
 }
 
 .play-page--classic .play-table-pair.is-discarding {
-  animation: play-discard 0.24s ease forwards;
+  animation: play-discard 0.42s ease forwards;
 }
 
 .play-role {
@@ -932,11 +949,12 @@
 
 .play-page--classic .play-card--hand.is-dim { opacity: 0.42; }
 .play-page--classic .play-card--hand.is-legal {
-  box-shadow: 0 0 0 2px rgba(240, 213, 106, 0.9);
+  outline: 2px solid #2fbf86;
+  outline-offset: 3px;
 }
 
 .play-page--classic .play-table-pair--open {
-  outline: 2px solid rgba(240, 213, 106, 0.8);
+  outline: 2px dashed rgba(255, 255, 255, 0.5);
   outline-offset: 3px;
 }
 
@@ -963,6 +981,49 @@
 }
 
 .play-history li + li { margin-top: 0.2rem; }
+
+.play-result {
+  max-width: 36rem;
+  margin: 0 auto 0.85rem;
+  padding: 1rem 1.1rem;
+  background: var(--game-surface);
+  border: 1px solid var(--game-border);
+  border-radius: var(--game-radius);
+}
+
+.play-result[hidden] {
+  display: none !important;
+}
+
+.play-result h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+  line-height: 1.25;
+}
+
+.play-result h2:focus {
+  outline: 2px solid #f3f5f8;
+  outline-offset: 3px;
+}
+
+.play-result p {
+  margin: 0;
+  color: var(--game-text);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.play-result__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.play-result a.game-btn {
+  min-height: 2.75rem;
+  text-decoration: none;
+}
 
 .play-chat {
   margin-top: 1rem;
@@ -1007,11 +1068,17 @@
 }
 
 @keyframes play-take {
-  to { transform: translateY(64px) scale(0.72); opacity: 0; }
+  to {
+    transform: translate(var(--clear-x, 0px), var(--clear-y, 64px)) scale(0.72);
+    opacity: 0;
+  }
 }
 
 @keyframes play-discard {
-  to { transform: translate(120px, -28px) scale(0.35); opacity: 0; }
+  to {
+    transform: translate(var(--clear-x, 120px), var(--clear-y, -28px)) scale(0.35);
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1199,7 +1266,7 @@
 
 .play-page--classic .play-felt-center {
   flex: 1 1 16rem;
-  min-height: 28rem;
+  min-height: 16rem;
   padding: 0.85rem;
   background: rgba(0, 0, 0, 0.12);
   border-radius: var(--game-radius-sm);
@@ -1292,8 +1359,13 @@
 
 .play-page--classic .play-table-pair--defend-target,
 .play-page--classic .play-table-pair--open {
-  outline: 2px dashed rgba(255, 213, 79, 0.55);
-  outline-offset: 2px;
+  outline: 2px dashed rgba(255, 255, 255, 0.5);
+  outline-offset: 3px;
+}
+
+.play-page--classic .play-table-pair.is-legal-target {
+  outline: 2px solid #8eb4ff;
+  outline-offset: 4px;
 }
 
 .play-page--classic .play-discard {
@@ -1372,20 +1444,42 @@
 }
 
 .play-page--classic .play-side-actions {
-  flex: 0 0 11rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 0.55rem;
   justify-content: center;
+  margin: 0 0 0.65rem;
+}
+
+.play-page--classic .play-side-actions[hidden] {
+  display: none !important;
 }
 
 .play-page--classic .play-action-btn {
-  width: 100%;
-  font-size: 0.92rem;
-  padding: 0.62rem 0.55rem;
+  width: auto;
+  flex: 1 1 9rem;
+  max-width: 16rem;
+  font-size: 0.95rem;
+  padding: 0.7rem 0.75rem;
   line-height: 1.25;
   white-space: normal;
   text-align: center;
+}
+
+@media (max-width: 720px) {
+  .play-page--classic .play-felt-center {
+    min-height: 11rem;
+  }
+
+  .play-page--classic .play-table-grid.is-two-rows {
+    min-height: 0;
+  }
+
+  .play-page--classic .play-action-btn {
+    flex-basis: 100%;
+    max-width: none;
+  }
 }
 
 .play-page--classic .play-drop-zone {
@@ -1435,15 +1529,24 @@
   margin-bottom: 0.4rem;
 }
 
+.play-page--classic .play-my-role[hidden] {
+  display: none !important;
+}
+
 .play-page--classic .play-hint {
-  margin: 0 0 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: rgba(201, 162, 39, 0.1);
+  margin: 0 0 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: #f4f7fb;
   border-radius: var(--game-radius-sm);
-  border: 1px dashed rgba(201, 162, 39, 0.35);
-  color: var(--game-muted);
-  font-size: 0.93rem;
+  border: none;
+  color: #1a1520;
+  font-size: 1.12rem;
+  font-weight: 700;
   line-height: 1.4;
+}
+
+.play-page--classic .play-hint[hidden] {
+  display: none !important;
 }
 
 .play-page--classic .play-hand-help {
@@ -1535,14 +1638,12 @@
 }
 
 .play-page--classic .play-card--hand.is-selected {
-  outline: 3px solid var(--game-accent);
-  outline-offset: 2px;
-  z-index: 3;
-  -webkit-transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 18px))
+  z-index: 40;
+  -webkit-transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 22px))
     rotate(var(--fan-rot, 0deg));
-  transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 18px))
+  transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 22px))
     rotate(var(--fan-rot, 0deg));
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.55);
 }
 
 .play-page--classic .play-card--hand.is-dragging {

@@ -9,8 +9,17 @@
     <div id="play-statusbar" class="play-statusbar" aria-live="polite"></div>
   </header>
 
+  <section id="play-result" class="play-result" hidden aria-labelledby="play-result-title">
+    <h2 id="play-result-title" tabindex="-1">Game over</h2>
+    <p id="play-result-text"></p>
+    <div class="play-result__actions">
+      <a id="play-result-lobby" class="game-btn game-btn--secondary" href="/fools/">Back to lobby</a>
+      <a class="game-btn game-btn--primary" href="/fools/">Find a game</a>
+    </div>
+  </section>
+
   <div class="play-classic-layout">
-    <div id="opponents" class="play-opponents" aria-label="Opponents"></div>
+    <div id="opponents" class="play-opponents" aria-label="Opponents, clockwise from you"></div>
 
     <div class="play-felt">
       <div class="play-felt__inner">
@@ -22,30 +31,29 @@
         <div id="table-mat" class="play-felt-center" aria-label="Table — trick area">
           <div id="table-rows" class="play-table-grid"></div>
         </div>
-
-        <aside class="play-side-actions" aria-label="Actions">
-          <button type="button" id="btn-transfer" class="game-btn game-btn--secondary play-action-btn" hidden>
-            Pass attack
-          </button>
-          <button type="button" id="btn-take" class="game-btn game-btn--secondary play-action-btn" hidden>
-            Take cards
-          </button>
-          <button type="button" id="btn-bito" class="game-btn game-btn--primary play-action-btn" hidden>
-            Beaten
-          </button>
-          <button type="button" id="btn-done" class="game-btn game-btn--primary play-action-btn" hidden>
-            Done
-          </button>
-        </aside>
       </div>
     </div>
 
     <footer class="play-my-area" id="play-my-seat">
       <div id="play-my-role" class="play-my-role"></div>
       <p id="play-hint" class="play-hint" role="status"></p>
+      <aside class="play-side-actions" aria-label="Actions" hidden>
+        <button type="button" id="btn-transfer" class="game-btn game-btn--secondary play-action-btn" hidden>
+          Transfer
+        </button>
+        <button type="button" id="btn-take" class="game-btn game-btn--secondary play-action-btn" hidden>
+          Take cards
+        </button>
+        <button type="button" id="btn-bito" class="game-btn game-btn--primary play-action-btn" hidden>
+          Beaten
+        </button>
+        <button type="button" id="btn-done" class="game-btn game-btn--primary play-action-btn" hidden>
+          Done throwing
+        </button>
+      </aside>
       <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
       <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
-      <p class="play-hand-help">Click a card to select it. Drag onto the felt to attack or add cards, and onto an uncovered attack to beat it. When transfer is allowed, select cards of the attack rank and press Pass attack, or drag them onto the felt.</p>
+      <p class="play-hand-help">Click a card to select it. Drag onto the felt to attack or add cards, and onto an uncovered attack to beat it. When transfer is allowed, select cards of the attack rank and press Transfer, or drag them onto the felt.</p>
     </footer>
   </div>
 

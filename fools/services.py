@@ -937,6 +937,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
         "lobby_id": str(game.lobby_id),
         "status": game.status,
         "transferable": bool(game.lobby.settings.is_transferable),
+        "neighbor_throw_only": bool(game.lobby.settings.neighbor_throw_only),
         "trump_card": _card_json(trump),
         "trump_in_deck": trump_in_deck,
         "deck_remaining": deck_left,
