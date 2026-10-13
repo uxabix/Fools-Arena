@@ -731,6 +731,23 @@
   color: var(--game-muted);
 }
 
+.play-link {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  background: #3e2424;
+  border: 1px solid #e8b4b4;
+  border-radius: var(--game-radius-sm);
+  color: #ffebee;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.play-link[hidden] {
+  display: none !important;
+}
+
 .play-page--classic .play-classic-layout {
   display: flex;
   flex-direction: column;
@@ -1094,6 +1111,39 @@
 .play-page--classic .play-opponent__meta {
   font-size: 0.82rem;
   color: var(--game-muted);
+}
+
+.play-opponent__duty {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #d7dce3;
+}
+
+.play-opponent__duty.is-finished {
+  color: #b7e4c7;
+}
+
+.play-my-duty {
+  margin: 0.15rem 0 0.45rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #d7dce3;
+}
+
+.play-my-duty.is-finished {
+  color: #b7e4c7;
+}
+
+.play-my-duty[hidden],
+.play-sending[hidden] {
+  display: none !important;
+}
+
+.play-sending {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f4f7fb;
 }
 
 .play-page--classic .play-opponent__backs {
@@ -1644,6 +1694,15 @@
   transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 22px))
     rotate(var(--fan-rot, 0deg));
   box-shadow: 0 16px 28px rgba(0, 0, 0, 0.55);
+}
+
+.play-page--classic .play-card--hand:focus-visible,
+.play-page--classic .play-table-pair:focus-visible {
+  box-shadow: 0 0 0 3px #f4f7fb, 0 10px 22px rgba(0, 0, 0, 0.35);
+}
+
+.play-page--classic .play-card--hand.is-selected:focus-visible {
+  box-shadow: 0 0 0 3px #f4f7fb, 0 16px 28px rgba(0, 0, 0, 0.55);
 }
 
 .play-page--classic .play-card--hand.is-dragging {

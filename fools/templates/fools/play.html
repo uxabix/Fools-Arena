@@ -7,6 +7,7 @@
     <a id="back-lobby" class="game-back" href="#">← Back to lobby</a>
     <button type="button" id="btn-leave" class="game-btn game-btn--secondary play-leave">Leave game</button>
     <div id="play-statusbar" class="play-statusbar" aria-live="polite"></div>
+    <p id="play-link" class="play-link" role="status" hidden></p>
   </header>
 
   <section id="play-result" class="play-result" hidden aria-labelledby="play-result-title">
@@ -36,8 +37,13 @@
 
     <footer class="play-my-area" id="play-my-seat">
       <div id="play-my-role" class="play-my-role"></div>
+      <p id="play-my-duty" class="play-my-duty" hidden></p>
       <p id="play-hint" class="play-hint" role="status"></p>
+      <p id="play-sending" class="play-sending" role="status" hidden>Sending…</p>
       <aside class="play-side-actions" aria-label="Actions" hidden>
+        <button type="button" id="btn-attack" class="game-btn game-btn--primary play-action-btn" hidden>
+          Attack
+        </button>
         <button type="button" id="btn-transfer" class="game-btn game-btn--secondary play-action-btn" hidden>
           Transfer
         </button>
@@ -53,7 +59,7 @@
       </aside>
       <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
       <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
-      <p class="play-hand-help">Click a card to select it. Drag onto the felt to attack or add cards, and onto an uncovered attack to beat it. When transfer is allowed, select cards of the attack rank and press Transfer, or drag them onto the felt.</p>
+      <p class="play-hand-help">Select a card, then press Attack or Throw in. To beat a card, select one of yours and press the highlighted attack. Arrow keys move between cards. Dragging still works. Transfer happens only when you press Transfer.</p>
     </footer>
   </div>
 

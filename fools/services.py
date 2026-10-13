@@ -951,6 +951,9 @@ def serialize_game(game: Game, viewer: User) -> dict:
             "pending_ids": [str(uid) for uid in pending_passers(game)]
             if rs.get("phase") == PHASE_TAKING
             else [],
+            "passed_ids": [str(uid) for uid in (rs.get("passed_ids") or [])]
+            if rs.get("phase") == PHASE_TAKING
+            else [],
         },
         "players": players_out,
         "table": table,

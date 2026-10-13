@@ -1,6 +1,6 @@
 /**
  * Durak table: SVG cards, opponents, felt, deck and trump.
- * Drag-and-drop is only for cards (attack / throw-in / defend); other actions use buttons.
+ * Cards can be dragged, or selected and played with a button, the keyboard, or a table target.
  * dataTransfer is mirrored to text/plain for browsers with limited custom MIME support.
  */
 (function () {
@@ -364,6 +364,7 @@
 
   function expectedActorId(rt) {
     if (!rt || state.status !== "in_progress") return null;
+    if (rt.phase === "taking") return null;
     var table = state.table || [];
     var open = table.filter(function (row) { return !row.defense; }).length;
     var actor = rt.attacker_id;
@@ -371,6 +372,30 @@
     else if (rt.phase !== "between" && table.length) actor = rt.attacker_id;
     if (rt.phase === "between" && seatCards(actor) === 0) return null;
     return actor;
+  }
+
+  function hasPassed(playerId, rt) {
+    return !!rt && (rt.passed_ids || []).some(function (id) {
+      return String(id) === String(playerId);
+    });
+  }
+
+  function playerMustAct(playerId, rt) {
+    if (!rt || !state || state.status !== "in_progress") return false;
+    if (rt.phase === "taking") return mustConfirm(playerId, rt);
+    var actor = expectedActorId(rt);
+    return actor != null && String(actor) === String(playerId);
+  }
+
+  function dutyText(playerId, rt) {
+    var roleKey = playerRoleKey(playerId, rt);
+    if (roleKey === "out") return "Out";
+    if (rt && rt.phase === "taking" && String(rt.defender_id) === String(playerId)) {
+      return "Taking — waiting";
+    }
+    if (rt && hasPassed(playerId, rt)) return "Finished throwing";
+    if (playerMustAct(playerId, rt)) return "Playing";
+    return "Waiting";
   }
 
   function nameOf(playerId) {
@@ -419,64 +444,118 @@
     return notes.join(" · ");
   }
 
+  function findByAttr(parent, name, value) {
+    if (!parent) return null;
+    var want = String(value);
+    var nodes = parent.children;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute(name) === want) return nodes[i];
+    }
+    return null;
+  }
+
+  function opponentBacks(n) {
+    var show = Math.min(6, Math.max(0, n));
+    var backs = "";
+    for (var i = 0; i < show; i++) {
+      backs +=
+        '<span class="play-opponent__back" style="--i:' + i + '">' + cardBackSvgHTML(true) + "</span>";
+    }
+    return backs;
+  }
+
+  function createOpponent(player) {
+    var div = document.createElement("div");
+    div.className = "play-opponent";
+    div.dataset.seat = String(player.user_id);
+    div.innerHTML =
+      '<div class="play-seat-mark" aria-hidden="true"></div>' +
+      '<div class="play-opponent__info">' +
+      '<span class="play-role"><span></span></span>' +
+      '<span class="play-opponent__name"></span>' +
+      '<span class="play-opponent__meta"></span>' +
+      '<span class="play-opponent__duty"></span>' +
+      "</div>" +
+      '<div class="play-opponent__backs"></div>';
+    return div;
+  }
+
+  function fillOpponent(div, player, index, total, uid, rt) {
+    var roleKey = playerRoleKey(player.user_id, rt);
+    var mustAct = playerMustAct(player.user_id, rt);
+    var passed = hasPassed(player.user_id, rt);
+    var duty = dutyText(player.user_id, rt);
+    div.className = "play-opponent is-" + roleKey + (mustAct ? " is-acting" : " is-waiting");
+    if (passed) div.classList.add("is-finished");
+    if (div.dataset.role !== roleKey) {
+      div.dataset.role = roleKey;
+      var mark = div.querySelector(".play-seat-mark");
+      var role = div.querySelector(".play-role");
+      if (mark) mark.innerHTML = roleIcon(roleKey);
+      if (role) {
+        role.className = "play-role play-role--" + roleKey;
+        role.innerHTML = roleIcon(roleKey) + "<span>" + roleLabel(roleKey) + "</span>";
+      }
+    }
+    var name = div.querySelector(".play-opponent__name");
+    if (name) name.textContent = player.username || "";
+    var n = player.cards_remaining != null ? player.cards_remaining : 0;
+    var place = seatPlace(index, total, player.user_id, uid, rt);
+    var meta = div.querySelector(".play-opponent__meta");
+    if (meta) {
+      meta.textContent = n + (n === 1 ? " card" : " cards") + (place ? " · " + place : "");
+    }
+    var dutyEl = div.querySelector(".play-opponent__duty");
+    if (dutyEl) {
+      dutyEl.textContent = duty;
+      dutyEl.className = "play-opponent__duty" +
+        (passed ? " is-finished" : "") +
+        (mustAct ? " is-acting" : "");
+    }
+    var backs = div.querySelector(".play-opponent__backs");
+    if (backs && backs.dataset.count !== String(n)) {
+      backs.dataset.count = String(n);
+      backs.innerHTML = opponentBacks(n);
+    }
+  }
+
   function renderOpponents(uid, rt) {
     var el = document.getElementById("opponents");
     if (!el) return;
-    el.innerHTML = "";
     var others = otherPlayers(uid);
-    if (!others.length) return;
-    var caption = document.createElement("p");
-    caption.className = "play-opponents__order";
-    caption.textContent = "Clockwise from you";
-    el.appendChild(caption);
-    var row = document.createElement("div");
-    row.className = "play-opponents__row";
-    others.forEach(function (p, index) {
-      var roleKey = playerRoleKey(p.user_id, rt);
-      var mustAct = mustConfirm(p.user_id, rt) || (
-        expectedActorId(rt) != null && String(expectedActorId(rt)) === String(p.user_id)
-      );
-      var duty = roleKey === "out" ? "Out" : mustAct ? "Playing" : "Waiting";
-      var place = seatPlace(index, others.length, p.user_id, uid, rt);
-      var div = document.createElement("div");
-      div.className = "play-opponent is-" + roleKey + (mustAct ? " is-acting" : " is-waiting");
-      div.dataset.seat = String(p.user_id);
-      var n = p.cards_remaining != null ? p.cards_remaining : 0;
-      var cardsWord = n === 1 ? " card" : " cards";
-      var backs = "";
-      var show = Math.min(6, Math.max(0, n));
-      for (var i = 0; i < show; i++) {
-        backs +=
-          '<span class="play-opponent__back" style="--i:' + i + '">' + cardBackSvgHTML(true) + "</span>";
+    if (!others.length) {
+      el.innerHTML = "";
+      return;
+    }
+    var row = el.querySelector(".play-opponents__row");
+    if (!row) {
+      el.innerHTML = "";
+      var caption = document.createElement("p");
+      caption.className = "play-opponents__order";
+      caption.textContent = "Clockwise from you";
+      row = document.createElement("div");
+      row.className = "play-opponents__row";
+      el.appendChild(caption);
+      el.appendChild(row);
+    }
+    var keep = {};
+    others.forEach(function (player, index) {
+      var id = String(player.user_id);
+      keep[id] = true;
+      var div = findByAttr(row, "data-seat", id);
+      if (!div) {
+        div = createOpponent(player);
+        row.appendChild(div);
       }
-      div.innerHTML =
-        '<div class="play-seat-mark" aria-hidden="true">' + roleIcon(roleKey) + "</div>" +
-        '<div class="play-opponent__info">' +
-        '<span class="play-role play-role--' + roleKey + '">' +
-        roleIcon(roleKey) +
-        "<span>" + roleLabel(roleKey) + "</span></span>" +
-        '<span class="play-opponent__name">' +
-        escapeHtml(p.username) +
-        "</span>" +
-        '<span class="play-opponent__meta">' +
-        n +
-        cardsWord +
-        (place ? " · " + place : "") +
-        " · " +
-        duty +
-        "</span></div>" +
-        '<div class="play-opponent__backs">' +
-        backs +
-        "</div>";
-      row.appendChild(div);
+      fillOpponent(div, player, index, others.length, uid, rt);
     });
-    el.appendChild(row);
-  }
-
-  function escapeHtml(s) {
-    var d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
+    Array.prototype.slice.call(row.children).forEach(function (div) {
+      if (!keep[div.getAttribute("data-seat")]) div.remove();
+    });
+    others.forEach(function (player) {
+      var div = findByAttr(row, "data-seat", player.user_id);
+      if (div) row.appendChild(div);
+    });
   }
 
   /** Stable pseudo-random peek offsets per table row so stacks stay readable when overlapping. */
@@ -608,17 +687,17 @@
       el.hidden = true;
       if (sign) sign.innerHTML = "";
       if (area) area.className = "play-my-area";
+      paintMyDuty(uid, rt);
       return;
     }
     el.hidden = false;
     var key = playerRoleKey(uid, rt);
-    var mustAct = mustConfirm(uid, rt) || (
-      expectedActorId(rt) != null && String(expectedActorId(rt)) === String(uid)
-    );
+    var mustAct = playerMustAct(uid, rt);
     el.innerHTML =
       '<span class="play-role play-role--' + key + '">' +
       roleIcon(key) +
       "<span>" + roleLabel(key) + "</span></span>";
+    paintMyDuty(uid, rt);
     if (sign) {
       sign.innerHTML = key === "wait" ? "" : roleIcon(key);
       sign.className = "play-my-sign is-" + key;
@@ -628,16 +707,72 @@
     }
   }
 
-  function throwRanksIHold(me) {
+  function paintMyDuty(uid, rt) {
+    var duty = document.getElementById("play-my-duty");
+    if (!duty) return;
+    if (!state || state.status !== "in_progress" || !rt) {
+      duty.hidden = true;
+      duty.textContent = "";
+      return;
+    }
+    var text = dutyText(uid, rt);
+    duty.hidden = !text;
+    duty.textContent = text;
+    duty.className = "play-my-duty" +
+      (hasPassed(uid, rt) ? " is-finished" : "") +
+      (playerMustAct(uid, rt) ? " is-acting" : "");
+  }
+
+  /** Mirrors fools.services.attack_cap: 6 after the first discard, otherwise 5. */
+  function attackCap() {
+    return state && (state.discard_count || 0) > 0 ? 6 : 5;
+  }
+
+  function throwSlots() {
+    var rt = (state && state.runtime) || {};
+    var cover = seatCards(rt.defender_id) - openCount();
+    var capRoom = attackCap() - ((state.table || []).length);
+    return Math.max(0, Math.min(cover, capRoom));
+  }
+
+  function canAddCards(uid, rt) {
+    if (!rt || !state || state.status !== "in_progress") return false;
+    var isAtt = String(rt.attacker_id) === String(uid);
+    var isDef = String(rt.defender_id) === String(uid);
+    if (rt.phase === "between") return isAtt;
+    if (rt.phase !== "build" && rt.phase !== "defend" && rt.phase !== "taking") return false;
+    if (isDef || !(state.table || []).length) return false;
+    if (isAtt) return true;
+    if (state.neighbor_throw_only && !throwNeighborIds(rt)[String(uid)]) return false;
+    return true;
+  }
+
+  function attackSelection(me) {
     if (!me || !me.hand) return [];
-    var onTable = tableRankNames();
+    return me.hand.filter(function (card) { return selected.has(card.id); });
+  }
+
+  function attackSelectionFits(cards, uid, rt) {
+    if (!cards.length || !canAddCards(uid, rt)) return false;
+    if (cards.length > throwSlots()) return false;
+    if (rt.phase === "between") {
+      var rank = cards[0].value;
+      return cards.every(function (card) { return card.value === rank; });
+    }
+    var names = tableRankNames();
+    return cards.every(function (card) { return !!names[card.value]; });
+  }
+
+  function throwableLabels(me, uid, rt) {
+    if (!canAddCards(uid, rt) || throwSlots() < 1 || !me || !me.hand) return [];
+    var names = rt.phase === "between" ? null : tableRankNames();
     var seen = {};
     var labels = [];
     me.hand.forEach(function (card) {
-      if (onTable[card.value] && !seen[card.value]) {
-        seen[card.value] = true;
-        labels.push(rankShort(card.rank));
-      }
+      if (names && !names[card.value]) return;
+      if (seen[card.value]) return;
+      seen[card.value] = true;
+      labels.push(rankShort(card.rank));
     });
     return labels;
   }
@@ -669,7 +804,9 @@
     if (singleAttackRank() == null) return false;
     var next = nextSeat(rt.defender_id);
     if (!next || String(next.user_id) === String(rt.defender_id)) return false;
-    return (next.cards_remaining || 0) >= ((state.table || []).length + extra);
+    var needed = (state.table || []).length + extra;
+    if (needed > attackCap()) return false;
+    return (next.cards_remaining || 0) >= needed;
   }
 
   function selectedPassIds(me) {
@@ -680,17 +817,68 @@
     }).map(function (card) { return card.id; });
   }
 
-  function postTransfer(ids) {
+  function postTransfer(ids, button) {
     if (!ids || !ids.length) return;
+    postAction(button || null, "transfer/", { card_ids: ids }, true);
+  }
+
+  function viewer(uid) {
+    return (state.players || []).find(function (row) {
+      return String(row.user_id) === String(uid);
+    }) || null;
+  }
+
+  function beginSend(button) {
+    sendCount += 1;
+    var note = document.getElementById("play-sending");
+    if (note) note.hidden = false;
+    if (!button) return;
+    busyButtons[button.id] = true;
+    button.textContent = "Sending…";
+    button.disabled = true;
+    button.setAttribute("aria-disabled", "true");
+  }
+
+  function endSend(button) {
+    sendCount = Math.max(0, sendCount - 1);
+    var note = document.getElementById("play-sending");
+    if (note) note.hidden = sendCount !== 0;
+    if (button) delete busyButtons[button.id];
+    updateActionButtons(uidStr(), (state && state.runtime) || {});
+  }
+
+  function postAction(button, path, body, clearSelection) {
     setErr("");
-    announceMine("transfer");
-    api("POST", BASE + "transfer/", { card_ids: ids })
+    beginSend(button);
+    api("POST", BASE + path, body)
       .then(function (s) {
-        return applyState(s, true);
+        return applyState(s, !!clearSelection);
+      })
+      .then(function () {
+        endSend(button);
       })
       .catch(function (e) {
-        setErr(e.message);
+        setErr(e.message || "Could not play.");
+        endSend(button);
       });
+  }
+
+  function setIdleLabel(btn, label) {
+    if (!btn) return;
+    btn.dataset.idleLabel = label;
+    if (!busyButtons[btn.id]) btn.textContent = label;
+  }
+
+  function settleButton(btn, hidden, disabled) {
+    if (!btn) return;
+    btn.hidden = hidden;
+    if (busyButtons[btn.id]) {
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+      return;
+    }
+    btn.disabled = !!disabled;
+    btn.setAttribute("aria-disabled", disabled ? "true" : "false");
   }
 
   function hintText(uid, me, rt) {
@@ -709,6 +897,15 @@
     }
     if (rt.phase === "between" && isAtt) {
       return "Your turn — choose a card to attack.";
+    }
+    if (taking && confirmAgain && mustConfirm(uid, rt)) {
+      return "Cards were added — confirm completion again. Throw in more, or press Done throwing.";
+    }
+    if (taking && confirmAgain && isDef) {
+      return "Cards were added — confirm completion again. You are still taking the cards.";
+    }
+    if (taking && confirmAgain) {
+      return "Cards were added — confirm completion again.";
     }
     if (taking && mustConfirm(uid, rt)) {
       return "The defender is taking the cards. Throw in more, or press Done throwing.";
@@ -741,7 +938,7 @@
     if (wave && isAtt && beaten) {
       return "All cards are beaten — throw in more, or press Beaten.";
     }
-    var throwable = throwRanksIHold(me);
+    var throwable = throwableLabels(me, uid, rt);
     if (wave && !isDef && throwable.length) {
       return "You can throw in: " + throwable.join(" or ") + ".";
     }
@@ -755,24 +952,29 @@
   }
 
   function cardIsLegal(card, uid, me, rt, trumpSuit) {
-    if (!rt || state.status !== "in_progress" || !me) return false;
-    var isAtt = String(rt.attacker_id) === uid;
-    var isDef = String(rt.defender_id) === uid;
-    var wave = rt.phase === "build" || rt.phase === "defend" || rt.phase === "taking";
-    if (rt.phase === "between") return isAtt;
-    if (rt.phase !== "taking" && isDef && openCount() > 0) {
-      if (transferRoom(1) && card.value === singleAttackRank()) return true;
-      return (state.table || []).some(function (row) {
+    if (!rt || state.status !== "in_progress" || !me || !card) return false;
+    var isDef = String(rt.defender_id) === String(uid);
+    var wave = rt.phase === "build" || rt.phase === "defend";
+    if (wave && isDef && openCount() > 0) {
+      var beats = (state.table || []).some(function (row) {
         return !row.defense && canBeatCard(card, row.attack, trumpSuit);
       });
+      if (beats) return true;
+      return !!(transferRoom(1) && card.value === singleAttackRank());
     }
-    if (wave && !isDef) {
-      return !!tableRankNames()[card.value];
+    if (!canAddCards(uid, rt) || throwSlots() < 1) return false;
+    var others = attackSelection(me).filter(function (item) { return item.id !== card.id; });
+    if (rt.phase === "between") {
+      if (!others.length) return true;
+      if (card.value !== others[0].value) return false;
+      return others.length + 1 <= throwSlots();
     }
-    return false;
+    if (!tableRankNames()[card.value]) return false;
+    return others.length + 1 <= throwSlots();
   }
 
   function wireActionButtons() {
+    var attack = document.getElementById("btn-attack");
     var take = document.getElementById("btn-take");
     var bito = document.getElementById("btn-bito");
     var done = document.getElementById("btn-done");
@@ -782,53 +984,35 @@
       btn.dataset.wired = "1";
       btn.addEventListener("click", handler);
     }
-    once(pass, function () {
-      var me = (state.players || []).find(function (row) {
-        return String(row.user_id) === uidStr();
-      });
-      var ids = selectedPassIds(me);
-      if (!ids.length || !transferRoom(ids.length)) {
-        setErr("Select cards of the attack rank to pass.");
+    once(attack, function () {
+      var uid = uidStr();
+      var rt = (state && state.runtime) || {};
+      var cards = attackSelection(viewer(uid));
+      if (!attackSelectionFits(cards, uid, rt)) {
+        setErr("Choose cards you can play together.");
         return;
       }
-      pass.disabled = true;
-      postTransfer(ids);
+      postAction(attack, "attack/", {
+        card_ids: cards.map(function (card) { return card.id; }),
+      }, true);
+    });
+    once(pass, function () {
+      var uid = uidStr();
+      var ids = selectedPassIds(viewer(uid));
+      if (!ids.length || !transferRoom(ids.length)) {
+        setErr("Select cards of the attack rank to transfer.");
+        return;
+      }
+      postTransfer(ids, pass);
     });
     once(take, function () {
-      setErr("");
-      announceMine("take");
-      take.disabled = true;
-      api("POST", BASE + "take/", {})
-        .then(function (s) {
-          return applyState(s, true);
-        })
-        .catch(function (e) {
-          setErr(e.message);
-        });
+      postAction(take, "take/", {}, true);
     });
     once(done, function () {
-      setErr("");
-      announceMine("pass");
-      done.disabled = true;
-      api("POST", BASE + "pass/", {})
-        .then(function (s) {
-          return applyState(s, true);
-        })
-        .catch(function (e) {
-          setErr(e.message);
-        });
+      postAction(done, "pass/", {}, true);
     });
     once(bito, function () {
-      setErr("");
-      announceMine("bito");
-      bito.disabled = true;
-      api("POST", BASE + "bito/", {})
-        .then(function (s) {
-          return applyState(s, true);
-        })
-        .catch(function (e) {
-          setErr(e.message);
-        });
+      postAction(bito, "bito/", {}, true);
     });
   }
 
@@ -836,45 +1020,39 @@
     rt = rt || {};
     var isAtt = rt.attacker_id != null && String(rt.attacker_id) === uid;
     var isDef = rt.defender_id != null && String(rt.defender_id) === uid;
+    var attackBtn = document.getElementById("btn-attack");
     var takeBtn = document.getElementById("btn-take");
     var bitoBtn = document.getElementById("btn-bito");
     var doneBtn = document.getElementById("btn-done");
     var passBtn = document.getElementById("btn-transfer");
-    var me = (state.players || []).find(function (row) {
-      return String(row.user_id) === String(uid);
-    });
+    var me = viewer(uid);
     var passIds = selectedPassIds(me);
-    var inProg = state.status === "in_progress";
+    var chosen = attackSelection(me);
+    var inProg = state && state.status === "in_progress";
     var wave = rt.phase === "build" || rt.phase === "defend";
-    var tbl = state.table || [];
+    var tbl = (state && state.table) || [];
     var show = inProg && wave && tbl.length > 0;
-    var allDefended =
-      tbl.length > 0 && tbl.every(function (r) { return r.defense; });
+    var allDefended = tbl.length > 0 && tbl.every(function (row) { return row.defense; });
+    var canAttack = !!(inProg && canAddCards(uid, rt) && throwableLabels(me, uid, rt).length);
 
-    if (takeBtn) {
-      takeBtn.hidden = !(show && isDef);
-      takeBtn.disabled = false;
-      takeBtn.setAttribute("aria-disabled", "false");
+    if (attackBtn) {
+      setIdleLabel(attackBtn, rt.phase === "between" ? "Attack" : "Throw in");
+      settleButton(attackBtn, !canAttack, !(canAttack && attackSelectionFits(chosen, uid, rt)));
     }
-    if (bitoBtn) {
-      bitoBtn.hidden = !(show && isAtt && allDefended);
-      bitoBtn.disabled = false;
-      bitoBtn.setAttribute("aria-disabled", "false");
-    }
-    if (doneBtn) {
-      doneBtn.hidden = !(inProg && mustConfirm(uid, rt));
-      doneBtn.disabled = false;
-      doneBtn.setAttribute("aria-disabled", "false");
-    }
+    settleButton(takeBtn, !(show && isDef), false);
+    settleButton(bitoBtn, !(show && isAtt && allDefended), false);
+    settleButton(doneBtn, !(inProg && mustConfirm(uid, rt)), false);
     if (passBtn) {
       var canPass = show && isDef && transferRoom(1);
-      passBtn.hidden = !canPass;
-      passBtn.disabled = !(canPass && passIds.length > 0 && transferRoom(passIds.length));
-      passBtn.setAttribute("aria-disabled", passBtn.disabled ? "true" : "false");
+      settleButton(
+        passBtn,
+        !canPass,
+        !(canPass && passIds.length > 0 && transferRoom(passIds.length))
+      );
     }
     var aside = document.querySelector(".play-side-actions");
     if (aside) {
-      aside.hidden = [takeBtn, bitoBtn, doneBtn, passBtn].every(function (btn) {
+      aside.hidden = [attackBtn, takeBtn, bitoBtn, doneBtn, passBtn].every(function (btn) {
         return !btn || btn.hidden;
       });
     }
@@ -937,6 +1115,285 @@
     };
   }
 
+  function toggleCard(cardId) {
+    var uid = uidStr();
+    var rt = (state && state.runtime) || {};
+    var me = viewer(uid);
+    var trumpSuit = state && state.trump_card ? state.trump_card.suit : null;
+    if (selected.has(cardId)) selected.delete(cardId);
+    else {
+      var card = me && me.hand && me.hand.find(function (item) { return item.id === cardId; });
+      if (!card || !cardIsLegal(card, uid, me, rt, trumpSuit)) return;
+      selected.add(cardId);
+    }
+    refreshHandMarks(uid, me, rt, trumpSuit);
+  }
+
+  function refreshHandMarks(uid, me, rt, trumpSuit) {
+    var inner = document.querySelector(".play-hand-fan__inner");
+    var cards = (me && me.hand) || [];
+    var n = cards.length;
+    var mid = (n - 1) / 2;
+    cards.forEach(function (card, idx) {
+      if (!inner) return;
+      var wrap = findByAttr(inner, "data-cid", card.id);
+      if (!wrap) return;
+      var legal = cardIsLegal(card, uid, me, rt, trumpSuit);
+      wrap.classList.toggle("is-legal", legal);
+      wrap.classList.toggle("is-dim", !legal);
+      wrap.classList.toggle("is-selected", selected.has(card.id));
+      wrap.setAttribute("aria-pressed", selected.has(card.id) ? "true" : "false");
+      wrap.style.zIndex = selected.has(card.id) ? "40" : String(30 - Math.abs(idx - mid));
+    });
+    paintDefenseTargets(uid, rt, trumpSuit);
+    updateActionButtons(uid, rt);
+  }
+
+  function placeHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit) {
+    var mid = (n - 1) / 2;
+    var maxDist = Math.max(mid, n - 1 - mid) || 1;
+    var dist = Math.abs(idx - mid);
+    var norm = dist / maxDist;
+    var legal = cardIsLegal(card, uid, me, rt, trumpSuit);
+    wrap.classList.toggle("play-card--trump", !!(trumpSuit && card.suit === trumpSuit));
+    wrap.classList.toggle("is-selected", selected.has(card.id));
+    wrap.classList.toggle("is-legal", legal);
+    wrap.classList.toggle("is-dim", !legal);
+    wrap.setAttribute("aria-pressed", selected.has(card.id) ? "true" : "false");
+    wrap.setAttribute("aria-label", card.rank + " of " + card.suit);
+    wrap.style.setProperty("--fan-rot", (idx - mid) * 7.25 + "deg");
+    wrap.style.setProperty("--fan-y", (norm * norm * 16 + norm * 3) + "px");
+    wrap.style.setProperty("--fan-x", ((idx - mid) * 0.85) + "px");
+    wrap.style.zIndex = selected.has(card.id) ? "40" : String(30 - Math.abs(idx - mid));
+  }
+
+  function createHandCard(card) {
+    var wrap = document.createElement("div");
+    wrap.className = "play-card play-card--hand";
+    wrap.dataset.cid = card.id;
+    wrap.tabIndex = 0;
+    wrap.setAttribute("role", "button");
+    wrap.setAttribute("draggable", "true");
+    wrap.innerHTML = cardSvgOuterHTML(card, {});
+    wrap.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      toggleCard(card.id);
+    });
+    wrap.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        toggleCard(card.id);
+        return;
+      }
+      if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+      var cards = Array.prototype.slice.call(wrap.parentNode.children);
+      var index = cards.indexOf(wrap);
+      var next = cards[index + (ev.key === "ArrowRight" ? 1 : -1)];
+      if (!next) return;
+      ev.preventDefault();
+      next.focus();
+    });
+    wrap.addEventListener("dragstart", function (ev) {
+      setDragCardIds(ev, attackPayloadFromDrag(card.id));
+      wrap.classList.add("is-dragging");
+    });
+    wrap.addEventListener("dragend", function () {
+      wrap.classList.remove("is-dragging");
+      if (!handDirty) return;
+      handDirty = false;
+      render(state.table || []);
+    });
+    return wrap;
+  }
+
+  function renderHand(uid, me, rt, trumpSuit) {
+    var handEl = document.getElementById("hand");
+    if (!handEl) return;
+    if (handEl.querySelector(".is-dragging")) {
+      handDirty = true;
+      return;
+    }
+    var inner = handEl.querySelector(".play-hand-fan__inner");
+    if (!inner) {
+      inner = document.createElement("div");
+      inner.className = "play-hand-fan__inner";
+      handEl.appendChild(inner);
+    }
+    var cards = (me && me.hand) || [];
+    var keep = {};
+    cards.forEach(function (card, idx) {
+      keep[card.id] = true;
+      var wrap = findByAttr(inner, "data-cid", card.id);
+      if (!wrap) {
+        wrap = createHandCard(card);
+        inner.appendChild(wrap);
+      }
+      placeHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit);
+    });
+    Array.prototype.slice.call(inner.children).forEach(function (wrap) {
+      if (!keep[wrap.getAttribute("data-cid")]) wrap.remove();
+    });
+    cards.forEach(function (card) {
+      var wrap = findByAttr(inner, "data-cid", card.id);
+      if (wrap) inner.appendChild(wrap);
+    });
+  }
+
+  function selectedBeater(me) {
+    if (!me || !me.hand || selected.size !== 1) return null;
+    var found = null;
+    me.hand.forEach(function (card) {
+      if (selected.has(card.id)) found = card;
+    });
+    return found;
+  }
+
+  function paintDefenseTargets(uid, rt, trumpSuit) {
+    var me = viewer(uid);
+    var chosen = selectedBeater(me);
+    var defending = rt && (rt.phase === "build" || rt.phase === "defend") &&
+      String(rt.defender_id) === String(uid);
+    document.querySelectorAll(".play-table-pair").forEach(function (el) {
+      var row = (state.table || []).find(function (item) {
+        return item.id === el.dataset.tableCardId;
+      });
+      var legal = !!(
+        defending && chosen && row && !row.defense && canBeatCard(chosen, row.attack, trumpSuit)
+      );
+      el.classList.toggle("is-legal-target", legal);
+      if (legal) {
+        el.tabIndex = 0;
+        el.setAttribute("role", "button");
+        el.setAttribute("aria-label", "Beat the " + row.attack.rank + " of " + row.attack.suit);
+      } else {
+        el.tabIndex = -1;
+        el.removeAttribute("role");
+        el.removeAttribute("aria-label");
+      }
+    });
+  }
+
+  function playDefenseOn(el) {
+    var uid = uidStr();
+    var rt = (state && state.runtime) || {};
+    var trumpSuit = state && state.trump_card ? state.trump_card.suit : null;
+    var row = (state.table || []).find(function (item) {
+      return item.id === el.dataset.tableCardId;
+    });
+    if (selected.size !== 1) {
+      setErr("Select one card to beat this attack.");
+      return;
+    }
+    var card = selectedBeater(viewer(uid));
+    if (!card || !row || !canBeatCard(card, row.attack, trumpSuit)) {
+      setErr("That card cannot beat this attack. To transfer, select the attack rank and press Transfer.");
+      return;
+    }
+    postAction(null, "defend/", { table_card_id: row.id, card_id: card.id }, true);
+  }
+
+  function bindPair(el) {
+    if (el.dataset.bound === "1") return;
+    el.dataset.bound = "1";
+    el.addEventListener("click", function () {
+      if (el.classList.contains("is-legal-target")) {
+        playDefenseOn(el);
+        return;
+      }
+      if (!el.classList.contains("play-table-pair--open")) return;
+      var rt = (state && state.runtime) || {};
+      if (String(rt.defender_id) !== uidStr()) return;
+      if (rt.phase !== "build" && rt.phase !== "defend") return;
+      setErr("That card cannot beat this attack. To transfer, select the attack rank and press Transfer.");
+    });
+    el.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      if (!el.classList.contains("is-legal-target")) return;
+      ev.preventDefault();
+      playDefenseOn(el);
+    });
+  }
+
+  function stackNodes(row, previous, uid) {
+    var peek = stackPeekFromRowId(row.id);
+    var defenseId = row.defense ? row.defense.id : "";
+    var def = document.createElement("div");
+    def.className = "play-card play-card--table play-card--stack-def" +
+      (row.defense ? "" : " play-card--placeholder");
+    def.dataset.cardId = defenseId;
+    def.innerHTML = row.defense ? cardSvgOuterHTML(row.defense, {}) : "";
+    def.style.setProperty("--peek-def-x", peek.dxA);
+    def.style.setProperty("--peek-def-y", peek.dyA);
+    def.style.setProperty("--peek-def-rot", peek.rotA);
+    if (row.defense && (!previous || !previous.defense)) {
+      def.classList.add("is-covering");
+      if (String((state.runtime || {}).defender_id) === String(uid)) def.classList.add("is-from-me");
+    }
+    var atk = document.createElement("div");
+    atk.className = "play-card play-card--table play-card--stack-atk";
+    atk.innerHTML = cardSvgOuterHTML(row.attack, {});
+    atk.style.setProperty("--peek-atk-x", peek.dxD);
+    atk.style.setProperty("--peek-atk-y", peek.dyD);
+    atk.style.setProperty("--peek-atk-rot", peek.rotD);
+    var stack = document.createElement("div");
+    stack.className = "play-table-stack";
+    stack.appendChild(atk);
+    stack.appendChild(def);
+    return stack;
+  }
+
+  function updatePair(el, row, previous, uid) {
+    el.classList.toggle("play-table-pair--open", !row.defense);
+    var def = el.querySelector(".play-card--stack-def");
+    var defenseId = row.defense ? row.defense.id : "";
+    if (!def || def.dataset.cardId === defenseId) return;
+    def.dataset.cardId = defenseId;
+    def.classList.toggle("play-card--placeholder", !row.defense);
+    def.innerHTML = row.defense ? cardSvgOuterHTML(row.defense, {}) : "";
+    if (row.defense && (!previous || !previous.defense)) {
+      def.classList.add("is-covering");
+      if (String((state.runtime || {}).defender_id) === String(uid)) def.classList.add("is-from-me");
+    }
+  }
+
+  function renderTable(previousTable, uid, rt, trumpSuit) {
+    var tbl = document.getElementById("table-rows");
+    if (!tbl) return;
+    var rows = state.table || [];
+    tbl.classList.toggle("is-two-rows", rows.length > 3);
+    var seen = {};
+    (previousTable || []).forEach(function (row) { seen[row.id] = row; });
+    var fromMe = activeBadge && String(activeBadge.userId) === String(uid);
+    var keep = {};
+    rows.forEach(function (row) {
+      keep[row.id] = true;
+      var el = findByAttr(tbl, "data-table-card-id", row.id);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "play-table-pair";
+        el.dataset.tableCardId = row.id;
+        if (!seen[row.id]) {
+          el.classList.add("is-arriving");
+          if (fromMe) el.classList.add("is-from-me");
+        }
+        if (!row.defense) el.classList.add("play-table-pair--open");
+        el.appendChild(stackNodes(row, seen[row.id], uid));
+        bindPair(el);
+        tbl.appendChild(el);
+      } else {
+        updatePair(el, row, seen[row.id], uid);
+      }
+    });
+    Array.prototype.slice.call(tbl.children).forEach(function (el) {
+      if (!keep[el.dataset.tableCardId]) el.remove();
+    });
+    rows.forEach(function (row) {
+      var el = findByAttr(tbl, "data-table-card-id", row.id);
+      if (el) tbl.appendChild(el);
+    });
+    paintDefenseTargets(uid, rt, trumpSuit);
+  }
+
   function render(previousTable) {
     if (!state) return;
     previousTable = previousTable || [];
@@ -960,121 +1417,8 @@
     renderDiscard();
 
     pruneSelection(me && me.hand);
-    var handEl = document.getElementById("hand");
-    if (handEl) {
-      handEl.innerHTML = "";
-      if (me && me.hand) {
-        var inner = document.createElement("div");
-        inner.className = "play-hand-fan__inner";
-        var n = me.hand.length;
-        var mid = (n - 1) / 2;
-        var maxDist = Math.max(mid, n - 1 - mid) || 1;
-        me.hand.forEach(function (c, idx) {
-          var wrap = document.createElement("div");
-          wrap.className = "play-card play-card--hand";
-          wrap.dataset.cid = c.id;
-          if (trumpSuit && c.suit === trumpSuit) wrap.classList.add("play-card--trump");
-          if (selected.has(c.id)) wrap.classList.add("is-selected");
-          if (cardIsLegal(c, uid, me, rt, trumpSuit)) wrap.classList.add("is-legal");
-          else wrap.classList.add("is-dim");
-          wrap.setAttribute("draggable", "true");
-          wrap.setAttribute("aria-label", c.rank + " " + c.suit);
-          wrap.innerHTML = cardSvgOuterHTML(c, {});
-          var dist = Math.abs(idx - mid);
-          var norm = dist / maxDist;
-          var rot = (idx - mid) * 7.25;
-          var y = norm * norm * 16 + norm * 3;
-          var x = (idx - mid) * 0.85;
-          wrap.style.setProperty("--fan-rot", rot + "deg");
-          wrap.style.setProperty("--fan-y", y + "px");
-          wrap.style.setProperty("--fan-x", x + "px");
-          wrap.style.zIndex = selected.has(c.id) ? "40" : String(30 - Math.abs(idx - mid));
-          wrap.addEventListener("click", function (ev) {
-            ev.preventDefault();
-          if (selected.has(c.id)) selected.delete(c.id);
-          else selected.add(c.id);
-          wrap.classList.toggle("is-selected", selected.has(c.id));
-          wrap.style.zIndex = selected.has(c.id) ? "40" : String(30 - Math.abs(idx - mid));
-          updateActionButtons(uid, rt);
-          });
-          wrap.addEventListener("dragstart", function (ev) {
-            var ids = attackPayloadFromDrag(c.id);
-            setDragCardIds(ev, ids);
-            wrap.classList.add("is-dragging");
-          });
-          wrap.addEventListener("dragend", function () {
-            wrap.classList.remove("is-dragging");
-          });
-          inner.appendChild(wrap);
-        });
-        handEl.appendChild(inner);
-      }
-    }
-
-    var seenRows = {};
-    previousTable.forEach(function (row) {
-      seenRows[row.id] = row;
-    });
-    var tbl = document.getElementById("table-rows");
-    if (tbl) {
-      tbl.innerHTML = "";
-      tbl.classList.toggle("is-two-rows", state.table.length > 3);
-      var fromMe = activeBadge && String(activeBadge.userId) === uid;
-      state.table.forEach(function (row) {
-        var d = document.createElement("div");
-        d.className = "play-table-pair";
-        if (!seenRows[row.id]) {
-          d.classList.add("is-arriving");
-          if (fromMe) d.classList.add("is-from-me");
-        }
-        d.dataset.tableCardId = row.id;
-        if (!row.defense) d.classList.add("play-table-pair--open");
-        var chosen = null;
-        if (me && me.hand && selected.size === 1) {
-          chosen = me.hand.find(function (card) { return selected.has(card.id); });
-        }
-        if (
-          chosen &&
-          !row.defense &&
-          String(rt.defender_id) === uid &&
-          canBeatCard(chosen, row.attack, trumpSuit)
-        ) {
-          d.classList.add("is-legal-target");
-        }
-
-        var stack = document.createElement("div");
-        stack.className = "play-table-stack";
-
-        var peek = stackPeekFromRowId(row.id);
-
-        var def = document.createElement("div");
-        def.className =
-          "play-card play-card--table play-card--stack-def" +
-          (row.defense ? "" : " play-card--placeholder");
-        var previous = seenRows[row.id];
-        if (row.defense && (!previous || !previous.defense)) {
-          def.classList.add("is-covering");
-          if (String(rt.defender_id) === uid) def.classList.add("is-from-me");
-        }
-        def.innerHTML = row.defense ? cardSvgOuterHTML(row.defense, {}) : "";
-        def.style.setProperty("--peek-def-x", peek.dxA);
-        def.style.setProperty("--peek-def-y", peek.dyA);
-        def.style.setProperty("--peek-def-rot", peek.rotA);
-
-        var atk = document.createElement("div");
-        atk.className = "play-card play-card--table play-card--stack-atk";
-        atk.innerHTML = cardSvgOuterHTML(row.attack, {});
-        atk.style.setProperty("--peek-atk-x", peek.dxD);
-        atk.style.setProperty("--peek-atk-y", peek.dyD);
-        atk.style.setProperty("--peek-atk-rot", peek.rotD);
-
-        stack.appendChild(atk);
-        stack.appendChild(def);
-        d.appendChild(stack);
-
-        tbl.appendChild(d);
-      });
-    }
+    renderHand(uid, me, rt, trumpSuit);
+    renderTable(previousTable, uid, rt, trumpSuit);
 
     wireDropTargets(uid, me, rt);
     updateActionButtons(uid, rt);
@@ -1098,6 +1442,10 @@
   var recentActions = [];
   var badgeTimer = null;
   var resultFocused = false;
+  var confirmAgain = false;
+  var handDirty = false;
+  var sendCount = 0;
+  var busyButtons = {};
   var HISTORY_KEY = "fools-history:" + gameId;
 
   function cardFace(card) {
@@ -1111,11 +1459,6 @@
     if (payload.action === "defend") return "Beat " + cards;
     if (payload.action === "transfer") return cards ? "Transferred " + cards : "Transferred the attack";
     return ACTION_LABEL[payload.action] || "Played";
-  }
-
-  function announceMine(action) {
-    if (!profile || profile.id == null) return;
-    showActionBadge({ action: action, user_id: profile.id }, false);
   }
 
   function showActionBadge(payload, record) {
@@ -1281,6 +1624,14 @@
     if (!clearKind && prevPhase === "taking" && nextPhase === "between" && nextLen < prevLen) {
       clearKind = "take";
     }
+    var prevPassed = previous && previous.runtime ? (previous.runtime.passed_ids || []) : [];
+    var nextPassed = next && next.runtime ? (next.runtime.passed_ids || []) : [];
+    if (nextPhase !== "taking") confirmAgain = false;
+    else if (prevPhase === "taking" && nextLen > prevLen && prevPassed.length && !nextPassed.length) {
+      confirmAgain = true;
+    } else if (nextPassed.length > prevPassed.length) {
+      confirmAgain = false;
+    }
     var takerId = previous && previous.runtime ? previous.runtime.defender_id : null;
     pendingClear = null;
     var wait = Promise.resolve();
@@ -1302,51 +1653,36 @@
 
   function wireDropTargets(uid, me, rt) {
     rt = rt || {};
-    var isAtt = rt.attacker_id != null && String(rt.attacker_id) === uid;
-    var isDef = rt.defender_id != null && String(rt.defender_id) === uid;
+    var isDef = rt.defender_id != null && String(rt.defender_id) === String(uid);
     var wave = rt.phase === "build" || rt.phase === "defend";
-    var canThrow = wave || rt.phase === "taking";
 
     var mat = document.getElementById("table-mat");
     if (mat) {
       mat.ondragover = allowDrop;
       mat.ondrop = null;
-      var allowMat =
-        state.status === "in_progress" &&
-        (rt.phase === "between" || canThrow) &&
-        (rt.phase === "between" ? isAtt : !isDef);
-      var allowPass = state.status === "in_progress" && isDef && transferRoom(1);
-      if (allowMat || allowPass) {
+      if (state.status === "in_progress" && canAddCards(uid, rt)) {
         mat.ondrop = function (ev) {
           ev.preventDefault();
           var ids = getDragCardIds(ev);
           if (!ids || !ids.length) return;
-          var rank = singleAttackRank();
-          var passing = allowPass && me && me.hand && ids.every(function (id) {
-            var card = me.hand.find(function (item) { return item.id === id; });
-            return card && card.value === rank;
+          var cards = [];
+          ids.forEach(function (id) {
+            var card = me && me.hand && me.hand.find(function (item) { return item.id === id; });
+            if (card) cards.push(card);
           });
-          if (passing) {
-            if (!transferRoom(ids.length)) {
-              setErr("The next player cannot take that many cards.");
-              return;
-            }
-            postTransfer(ids);
+          if (cards.length !== ids.length || !attackSelectionFits(cards, uid, rt)) {
+            setErr("Those cards cannot be played.");
             return;
           }
-          if (!allowMat) return;
-          setErr("");
-          api("POST", BASE + "attack/", { card_ids: ids })
-            .then(function (s) {
-              return applyState(s, true);
-            })
-            .catch(function (e) {
-              setErr(e.message);
-            });
+          postAction(null, "attack/", { card_ids: ids }, true);
         };
       }
     }
 
+    document.querySelectorAll(".play-table-pair").forEach(function (rowEl) {
+      rowEl.ondragover = null;
+      rowEl.ondrop = null;
+    });
     document.querySelectorAll(".play-table-pair--open").forEach(function (rowEl) {
       rowEl.ondragover = allowDrop;
       rowEl.ondrop = null;
@@ -1361,25 +1697,10 @@
           var card = me && me.hand && me.hand.find(function (item) { return item.id === ids[0]; });
           var row = (state.table || []).find(function (item) { return item.id === tid; });
           if (card && row && canBeatCard(card, row.attack, trumpSuit)) {
-            setErr("");
-            api("POST", BASE + "defend/", { table_card_id: tid, card_id: ids[0] })
-              .then(function (s) {
-                return applyState(s, true);
-              })
-              .catch(function (e) {
-                setErr(e.message);
-              });
+            postAction(null, "defend/", { table_card_id: tid, card_id: ids[0] }, true);
             return;
           }
-          var rank = singleAttackRank();
-          if (rank != null && ids.every(function (id) {
-            var held = me && me.hand && me.hand.find(function (item) { return item.id === id; });
-            return held && held.value === rank;
-          }) && transferRoom(ids.length)) {
-            postTransfer(ids);
-            return;
-          }
-          setErr("That card cannot beat this attack.");
+          setErr("That card cannot beat this attack. To transfer, select the attack rank and press Transfer.");
         };
       }
     });
@@ -1462,14 +1783,30 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", function () {
-    loadHistory();
-    paintHistory();
-    wireActionButtons();
-    wireLeave();
+  function setLink(text) {
+    var el = document.getElementById("play-link");
+    if (!el) return;
+    if (!text) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = text;
+  }
+
+  var gameSocketRetries = 0;
+  var gameSocketToken = 0;
+
+  function connectGameSocket() {
+    var token = ++gameSocketToken;
     var wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+    if (gameSocketRetries > 0) setLink("Reconnecting…");
     var ws = new WebSocket(wsProto + "//" + location.host + "/ws/games/" + gameId + "/");
     ws.onopen = function () {
+      if (token !== gameSocketToken) return;
+      gameSocketRetries = 0;
+      setLink("");
       refresh().catch(function (e) {
         setErr(e.message);
       });
@@ -1489,6 +1826,25 @@
         setErr(e.message);
       });
     };
+    ws.onclose = function () {
+      if (token !== gameSocketToken) return;
+      setLink("Connection lost.");
+      var delay = Math.min(10000, 800 * Math.pow(2, Math.min(gameSocketRetries, 4)));
+      gameSocketRetries += 1;
+      window.setTimeout(function () {
+        if (token !== gameSocketToken) return;
+        setLink("Reconnecting…");
+        connectGameSocket();
+      }, delay);
+    };
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    loadHistory();
+    paintHistory();
+    wireActionButtons();
+    wireLeave();
+    connectGameSocket();
 
     api("GET", "/api/accounts/auth/profile/")
       .then(function (p) {

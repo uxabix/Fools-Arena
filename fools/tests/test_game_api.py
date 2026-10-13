@@ -90,6 +90,8 @@ class TestGameLobbyAPI:
         assert detail.status_code == status.HTTP_200_OK
         assert detail.data["status"] == "in_progress"
         assert detail.data["runtime"]["phase"] == "between"
+        assert detail.data["runtime"]["passed_ids"] == []
+        assert detail.data["runtime"]["pending_ids"] == []
         assert detail.data["transferable"] is False
         assert detail.data["neighbor_throw_only"] is False
         me = next(p for p in detail.data["players"] if p["user_id"] == str(test_user.id))
