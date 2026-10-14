@@ -25,6 +25,22 @@ class TestGameLobbyAPI:
         r = api.get(url)
         assert r.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_create_rejects_a_deck_that_cannot_deal_every_seat(self, api, test_user):
+        """24 cards deal 6 each, so 6 seats are refused before a lobby exists."""
+        api.force_login(test_user)
+        response = api.post(
+            reverse("api-lobby-list"),
+            {
+                "name": "Too small",
+                "is_private": False,
+                "max_players": 6,
+                "card_count": 24,
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "card_count" in response.data
+
     def test_create_and_list_lobby(self, api, test_user, durak_deck_36):
         """Authenticated user can create a lobby and see it in the public list."""
         api.force_login(test_user)

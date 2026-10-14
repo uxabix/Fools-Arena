@@ -7,6 +7,8 @@ are built from :func:`fools.services.serialize_lobby` /
 
 from rest_framework import serializers
 
+from fools.services import OPENING_HAND, max_players_for_deck
+
 
 class LobbyCreateSerializer(serializers.Serializer):
     """Validate payload for :class:`fools.api_views.LobbyListCreateAPI` POST."""
@@ -72,6 +74,16 @@ class LobbyCreateSerializer(serializers.Serializer):
             )
         if not attrs.get("is_private"):
             attrs["password"] = ""
+        seat_limit = max_players_for_deck(attrs["card_count"])
+        if attrs["max_players"] > seat_limit:
+            raise serializers.ValidationError(
+                {
+                    "card_count": (
+                        f"A {attrs['card_count']}-card deck deals {OPENING_HAND} cards "
+                        f"to each player, so it seats at most {seat_limit}."
+                    )
+                }
+            )
         return attrs
 
 

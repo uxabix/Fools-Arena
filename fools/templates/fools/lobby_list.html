@@ -93,17 +93,18 @@
       <div class="lobby-field" data-field="max_players">
         <label class="lobby-field__label" for="id_max_players">Players</label>
         <input id="id_max_players" name="max_players" type="number" min="2" max="8" value="4" inputmode="numeric" required aria-describedby="max-players-hint max-players-error" />
-        <p id="max-players-hint" class="field-hint">2–8</p>
+        <p id="max-players-hint" class="field-hint">2–6 for a 36-card deck. Each player is dealt 6 cards.</p>
         <p id="max-players-error" class="lobby-field__error" role="alert" hidden></p>
       </div>
 
       <div class="lobby-field" data-field="card_count">
         <label class="lobby-field__label" for="id_card_count">Deck</label>
-        <select id="id_card_count" name="card_count" required aria-describedby="card-count-error">
+        <select id="id_card_count" name="card_count" required aria-describedby="card-count-hint card-count-error">
           <option value="24">24 cards</option>
           <option value="36" selected>36 cards</option>
           <option value="52">52 cards</option>
         </select>
+        <p id="card-count-hint" class="field-hint">The deck must cover 6 cards for every seat.</p>
         <p id="card-count-error" class="lobby-field__error" role="alert" hidden></p>
       </div>
 

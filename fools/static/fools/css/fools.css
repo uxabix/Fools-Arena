@@ -705,6 +705,7 @@
 }
 
 .play-page--classic .play-classic-bar {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -729,10 +730,16 @@
   font-size: 0.95rem;
   line-height: 1.45;
   color: var(--game-muted);
+  /* Two lines reserved so a longer phase name does not push the table down. */
+  min-height: 2.9em;
 }
 
 .play-link {
-  flex: 1 0 100%;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  z-index: 8;
   margin: 0;
   padding: 0.6rem 0.8rem;
   background: #3e2424;
@@ -742,6 +749,7 @@
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.35;
+  pointer-events: none;
 }
 
 .play-link[hidden] {
@@ -802,14 +810,34 @@
 
 .play-my-head {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.45rem 0.75rem;
+  min-height: 2rem;
 }
 
-.play-my-badge:empty,
-.play-opponent__badge:empty {
-  display: none;
+/* Slot stays the same height when an action label appears, so the hand does not jump. */
+.play-my-badge {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 2rem;
+}
+
+.play-opponent__badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.35rem;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.play-opponent__badge .play-action-badge {
+  pointer-events: auto;
 }
 
 .play-chat-status {
@@ -871,8 +899,9 @@
   }
 
   .play-seat-bin--north .play-opponent {
-    width: auto;
-    min-width: 8.5rem;
+    width: 11.5rem;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .play-ring[data-seats="0"] .play-ring__body,
@@ -902,6 +931,19 @@
   align-items: center;
   text-align: center;
   gap: 0.15rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.play-page--classic .play-opponent__name,
+.play-page--classic .play-opponent__meta,
+.play-page--classic .play-opponent__duty {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .play-page--classic .play-opponent__name {
@@ -916,7 +958,9 @@
 }
 
 .play-action-badge {
-  margin: 0.35rem 0 0;
+  margin: 0;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.28rem 0.75rem;
   border-radius: 999px;
   background: #f0d56a;
@@ -924,6 +968,9 @@
   font-weight: 700;
   font-size: 0.9rem;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   animation: play-badge-in 0.28s ease;
 }
 
@@ -1267,6 +1314,10 @@
 
 .play-my-duty {
   margin: 0.15rem 0 0.45rem;
+  min-height: 1.3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.98rem;
   font-weight: 700;
   color: #d7dce3;
@@ -1276,16 +1327,22 @@
   color: #b7e4c7;
 }
 
-.play-my-duty[hidden],
-.play-sending[hidden] {
+.play-my-duty[hidden] {
   display: none !important;
 }
 
 .play-sending {
   margin: 0 0 0.45rem;
+  min-height: 1.3em;
+  line-height: 1.3;
+  white-space: nowrap;
   font-size: 0.95rem;
   font-weight: 700;
   color: #f4f7fb;
+}
+
+.play-sending.is-idle {
+  visibility: hidden;
 }
 
 .play-page--classic .play-opponent__backs {
@@ -1458,14 +1515,17 @@
 
 .play-page--classic .play-felt-center {
   flex: 1 1 16rem;
-  min-height: 16rem;
+  /* Extra attack rows scroll inside this box instead of pushing the hand. */
+  height: 20rem;
   padding: 0.85rem;
   background: rgba(0, 0, 0, 0.12);
   border-radius: var(--game-radius-sm);
   border: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
+  align-items: safe center;
   justify-content: center;
+  overflow: auto;
 }
 
 .play-page--classic .play-take-handle {
@@ -1496,7 +1556,6 @@
 }
 
 .play-page--classic .play-table-grid.is-two-rows {
-  min-height: 20rem;
   align-content: space-evenly;
 }
 
@@ -1569,7 +1628,8 @@
   align-items: center;
   justify-content: flex-start;
   gap: 0.15rem;
-  min-height: 0;
+  /* Same block empty or filled, so the felt does not grow on the first discard. */
+  min-height: 9.8rem;
   padding: 0.45rem 0.4rem 0.6rem;
   background: rgba(0, 0, 0, 0.18);
   border-radius: var(--game-radius-sm);
@@ -1643,6 +1703,11 @@
   gap: 0.55rem;
   justify-content: center;
   margin: 0 0 0.65rem;
+  min-height: 2.75rem;
+}
+
+.play-page--classic .play-side-actions.is-empty {
+  visibility: hidden;
 }
 
 .play-page--classic .play-side-actions[hidden] {
@@ -1674,12 +1739,17 @@
 }
 
 @media (max-width: 720px) {
-  .play-page--classic .play-felt-center {
-    min-height: 11rem;
+  .play-page--classic .play-statusbar {
+    min-height: 4.35em;
   }
 
-  .play-page--classic .play-table-grid.is-two-rows {
-    min-height: 0;
+  .play-page--classic .play-hint {
+    min-height: 4.2em;
+  }
+
+  .play-page--classic .play-side-actions {
+    /* Two stacked actions; one visible button must not shrink the row. */
+    min-height: calc(2.75rem * 2 + 0.55rem);
   }
 
   .play-page--classic .play-action-btn {
@@ -1749,6 +1819,8 @@
   font-size: 1.12rem;
   font-weight: 700;
   line-height: 1.4;
+  /* Short and long hints occupy the same block, so the hand stays put. */
+  min-height: 2.8em;
 }
 
 .play-page--classic .play-hint[hidden] {
@@ -1763,10 +1835,10 @@
 
 .play-page--classic .play-hand-fan {
   display: block;
-  min-height: 13.5rem;
+  height: 13.5rem;
   padding: 0.35rem 0.25rem;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   background: #121a24;
   background: -webkit-linear-gradient(top, #1a2431 0%, #121820 100%);
@@ -1785,7 +1857,7 @@
   justify-content: center;
   -webkit-box-align: end;
   align-items: flex-end;
-  padding: 1.1rem 2.75rem 0.55rem;
+  padding: 1.25rem 2.75rem 1.1rem;
   min-width: -webkit-min-content;
   min-width: min-content;
   margin: 0 auto;

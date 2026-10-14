@@ -27,6 +27,9 @@
   var privateBox = document.getElementById("id_is_private");
   var passwordWrap = document.getElementById("password-field");
   var passwordInput = document.getElementById("id_password");
+  var playersInput = document.getElementById("id_max_players");
+  var createDeckInput = document.getElementById("id_card_count");
+  var OPENING_HAND = 6;
   var creating = false;
   var createConfirmed = false;
   var pendingJoinButton = null;
@@ -137,6 +140,37 @@
     if (!placed && data.detail) setFormError(messageOf(data.detail));
     var first = form.querySelector(".is-invalid input, .is-invalid select, #create-error:not([hidden])");
     if (first && first.focus) first.focus();
+  }
+
+  /** Show when the chosen deck cannot deal 6 cards to every seat. */
+  function syncDeckSeats() {
+    var players = Number(playersInput.value);
+    var cards = Number(createDeckInput.value);
+    var limit = Math.floor(cards / OPENING_HAND);
+    var hint = document.getElementById("max-players-hint");
+    if (hint && limit >= 2) {
+      hint.textContent = "2–" + Math.min(8, limit) + " for this deck. Each player is dealt 6 cards.";
+    }
+    if (limit >= 2) playersInput.max = String(Math.min(8, limit));
+    if (!players || !cards || players <= limit) {
+      var slot = document.getElementById("card-count-error");
+      if (slot && slot.getAttribute("data-deck-fit") === "1") {
+        setFieldError("card_count", "");
+        var field = form.querySelector('[data-field="card_count"]');
+        if (field) field.classList.remove("is-invalid");
+        createDeckInput.removeAttribute("aria-invalid");
+        slot.hidden = true;
+        slot.textContent = "";
+        slot.removeAttribute("data-deck-fit");
+      }
+      return true;
+    }
+    setFieldError(
+      "card_count",
+      "A " + cards + "-card deck deals 6 cards to each player, so it seats at most " + limit + "."
+    );
+    document.getElementById("card-count-error").setAttribute("data-deck-fit", "1");
+    return false;
   }
 
   function syncPassword() {
@@ -389,6 +423,9 @@
   openBtn.addEventListener("click", openForm);
   cancelBtn.addEventListener("click", closeForm);
   privateBox.addEventListener("change", syncPassword);
+  playersInput.addEventListener("input", syncDeckSeats);
+  createDeckInput.addEventListener("change", syncDeckSeats);
+  syncDeckSeats();
 
   function rememberLobby(lobby) {
     var index = allLobbies.findIndex(function (row) { return sameId(row.id, lobby.id); });
@@ -466,6 +503,10 @@
       return;
     }
     createConfirmed = false;
+    if (!syncDeckSeats()) {
+      createDeckInput.focus();
+      return;
+    }
     creating = true;
     clearErrors();
     submitBtn.disabled = true;

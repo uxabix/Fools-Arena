@@ -79,6 +79,24 @@ def rank_values_for_deck(card_count: int) -> list[int]:
     raise ValueError("Unsupported card_count")
 
 
+# Cards dealt to each seat at the open, and the hand size drawn back up to later.
+OPENING_HAND = 6
+
+
+def max_players_for_deck(card_count: int) -> int:
+    """Return how many seats ``card_count`` can open.
+
+    Each seat is dealt :data:`OPENING_HAND` cards before anyone plays.
+
+    Args:
+        card_count: Deck size, such as 24, 36, or 52.
+
+    Returns:
+        The largest whole number of seats that deck can deal.
+    """
+    return card_count // OPENING_HAND
+
+
 class GameError(Exception):
     """Domain error with a stable machine-readable ``code`` for API mapping.
 
@@ -268,7 +286,7 @@ def _pick_first_attacker(game: Game, trump_suit_id) -> UUID:
     return _player_circle(game)[0].user_id
 
 
-def _draw_for_player(game: Game, user: User, target_hand: int = 6):
+def _draw_for_player(game: Game, user: User, target_hand: int = OPENING_HAND):
     while True:
         gp = GamePlayer.objects.get(fools=game, user=user)
         if gp.cards_remaining >= target_hand:
@@ -316,7 +334,7 @@ def _draw_round_after_discard(
         sequence = [p for p in sequence if p.user_id != last_user_id]
         sequence.append(last)
     for player in sequence:
-        _draw_for_player(game, player.user, 6)
+        _draw_for_player(game, player.user, OPENING_HAND)
     _refresh_card_counts(game)
 
 
@@ -336,7 +354,10 @@ def _maybe_finish_game(game: Game):
     lobby = game.lobby
     lobby.status = "waiting"
     lobby.save(update_fields=["status"])
-    LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
+    LobbyPlayer.objects.filter(
+        lobby=lobby, status="playing", user__is_bot=False
+    ).update(status="waiting")
+    release_lobby_bots(lobby)
     broadcast_game(
         game.id,
         "game_finished",
@@ -548,6 +569,29 @@ def _all_defended(game: Game) -> bool:
     return qs.exists() and not qs.filter(defense_card__isnull=True).exists()
 
 
+def release_lobby_bots(lobby: Lobby) -> int:
+    """Mark every bot seat in ``lobby`` as left.
+
+    Bots are filled in when a game starts. They cannot press ready, so
+    they must not keep a chair after the match returns to the lobby.
+    The next start seats them again when ``fill_with_bots`` is on.
+
+    Args:
+        lobby: Lobby whose bot memberships should end.
+
+    Returns:
+        How many bot seats were released.
+    """
+    released = (
+        LobbyPlayer.objects.filter(lobby=lobby, user__is_bot=True)
+        .exclude(status="left")
+        .update(status="left")
+    )
+    if released:
+        logger.info("Released %s bot seat(s) from lobby %s", released, lobby.id)
+    return released
+
+
 def close_lobby_if_no_humans(lobby: Lobby) -> bool:
     """Close a lobby that no longer has a human member.
 
@@ -670,7 +714,18 @@ def create_lobby(
 
     Returns:
         The newly created :class:`~fools.models.Lobby` instance.
+
+    Raises:
+        GameError: When the deck cannot deal :data:`OPENING_HAND` cards
+            to every seat.
     """
+    seat_limit = max_players_for_deck(card_count)
+    if max_players > seat_limit:
+        raise GameError(
+            f"A {card_count}-card deck deals {OPENING_HAND} cards to each player, "
+            f"so it seats at most {seat_limit}.",
+            "config",
+        )
     leave_other_active_lobbies(owner, except_lobby=None)
     lobby = Lobby.objects.create(
         owner=owner,
@@ -836,6 +891,13 @@ def start_game(lobby: Lobby, user: User) -> Game:
     )
     if len(ready_players) < 2:
         raise GameError("Need at least 2 ready players", "precondition")
+    seat_limit = max_players_for_deck(settings.card_count)
+    if len(ready_players) > seat_limit:
+        raise GameError(
+            f"A {settings.card_count}-card deck deals {OPENING_HAND} cards to each player, "
+            f"so it seats at most {seat_limit}.",
+            "config",
+        )
 
     lobby.status = "playing"
     lobby.save(update_fields=["status"])
@@ -889,7 +951,7 @@ def start_game(lobby: Lobby, user: User) -> Game:
 
     trump_card = Card.objects.get(id=trump_id)
     for gp in _player_circle(game):
-        for dealt in range(6):
+        for dealt in range(OPENING_HAND):
             entry = GameDeck.get_top_card(game)
             if not entry:
                 break
@@ -924,10 +986,11 @@ def start_game(lobby: Lobby, user: User) -> Game:
 def rematch(game: Game, user: User) -> Game:
     """Deal another game for everyone still seated in the lobby.
 
-    The host of a finished match readies every member who has not left,
-    then uses the same start rules as a new deal. Someone who already
-    left is not pulled back in. Empty chairs are filled only when the
-    lobby is set to seat bots.
+    The host of a finished match readies every person who has not left,
+    then uses the same start rules as a new deal. Bots are not kept in
+    the lobby between games; empty chairs are filled again only when
+    this lobby still asks for bots. Someone who already left is not
+    pulled back in.
 
     Args:
         game: Finished match whose lobby should play again.
@@ -1570,7 +1633,8 @@ def abandon_game(game: Game, user: User) -> Game:
     lobby = game.lobby
     was_owner = lobby.owner_id == user.id
     LobbyPlayer.objects.filter(lobby=lobby, user=user).update(status="left")
-    LobbyPlayer.objects.filter(lobby=lobby, status="playing").exclude(user=user).update(status="waiting")
+    release_lobby_bots(lobby)
+    LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
     if not close_lobby_if_no_humans(lobby):
         lobby.status = "waiting"
         update_fields = ["status"]

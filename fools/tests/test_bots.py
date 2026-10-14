@@ -180,6 +180,47 @@ def test_start_reuses_bots_stuck_without_a_human(test_user, durak_deck_36):
 
 
 @pytest.mark.django_db
+def test_finished_match_frees_bot_seats(test_user, durak_deck_36):
+    """After the deal, bots leave the lobby so humans can ready up again."""
+    from fools.models import GameDeck, PlayerHand
+    from fools.services import release_finished_seats, rematch
+
+    lobby = create_lobby(
+        test_user,
+        "after-bots",
+        is_private=False,
+        max_players=2,
+        fill_with_bots=True,
+    )
+    set_ready(lobby, test_user, True)
+    game = start_game(lobby, test_user)
+    assert lobby.players.filter(user__is_bot=True).exclude(status="left").exists()
+
+    PlayerHand.objects.filter(fools=game).delete()
+    GameDeck.objects.filter(fools=game).delete()
+    release_finished_seats(game)
+
+    lobby.refresh_from_db()
+    game.refresh_from_db()
+    assert game.status == "finished"
+    assert lobby.status == "waiting"
+    assert not lobby.players.filter(user__is_bot=True).exclude(status="left").exists()
+    assert lobby.players.filter(user=test_user, status="waiting").exists()
+
+    again = rematch(game, test_user)
+    assert again.status == "in_progress"
+    assert again.players.filter(user__is_bot=True).exists()
+
+
+@pytest.mark.django_db
+def test_create_lobby_refuses_a_short_deck(test_user):
+    """The service rejects a table the opening deal cannot cover."""
+    with pytest.raises(GameError) as exc:
+        create_lobby(test_user, "short-deck", is_private=False, max_players=5, card_count=24)
+    assert exc.value.code == "config"
+
+
+@pytest.mark.django_db
 def test_last_human_leaving_closes_the_lobby(test_user, durak_deck_36):
     """Bots do not keep a lobby or its match after the last human leaves."""
     lobby = create_lobby(

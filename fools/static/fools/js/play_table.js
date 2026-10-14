@@ -376,14 +376,17 @@
     return null;
   }
 
-  function opponentBacks(n) {
+  /** Add or drop face-down cards. Existing images stay, so a count change does not reload them. */
+  function syncOpponentBacks(backs, n) {
     var show = Math.min(6, Math.max(0, n));
-    var backs = "";
-    for (var i = 0; i < show; i++) {
-      backs +=
-        '<span class="play-opponent__back" style="--i:' + i + '">' + cardBackSvgHTML(true) + "</span>";
+    while (backs.childElementCount > show) backs.removeChild(backs.lastElementChild);
+    while (backs.childElementCount < show) {
+      var span = document.createElement("span");
+      span.className = "play-opponent__back";
+      span.style.setProperty("--i", String(backs.childElementCount));
+      span.innerHTML = cardBackSvgHTML();
+      backs.appendChild(span);
     }
-    return backs;
   }
 
   function createOpponent(player) {
@@ -421,26 +424,28 @@
       }
     }
     var name = div.querySelector(".play-opponent__name");
-    if (name) name.textContent = player.username || "";
+    if (name) {
+      name.textContent = player.username || "";
+      name.title = player.username || "";
+    }
     var hidden = inboundOpp && inboundOpp[String(player.user_id)] ? inboundOpp[String(player.user_id)] : 0;
     var n = Math.max(0, (player.cards_remaining != null ? player.cards_remaining : 0) - hidden);
     var place = seatPlace(index, total, player.user_id, uid, rt);
     var meta = div.querySelector(".play-opponent__meta");
     if (meta) {
       meta.textContent = n + (n === 1 ? " card" : " cards") + (place ? " · " + place : "");
+      meta.title = meta.textContent;
     }
     var dutyEl = div.querySelector(".play-opponent__duty");
     if (dutyEl) {
       dutyEl.textContent = duty;
+      dutyEl.title = duty;
       dutyEl.className = "play-opponent__duty" +
         (passed ? " is-finished" : "") +
         (mustAct ? " is-acting" : "");
     }
     var backs = div.querySelector(".play-opponent__backs");
-    if (backs && backs.dataset.count !== String(n)) {
-      backs.dataset.count = String(n);
-      backs.innerHTML = opponentBacks(n);
-    }
+    if (backs) syncOpponentBacks(backs, n);
   }
 
   function findOpponent(id) {
@@ -470,25 +475,33 @@
     return plan[Math.min(index, plan.length - 1)];
   }
 
+  /**
+   * Seat opponents once. A node that is already in the right slot stays there,
+   * so a table refresh does not restart its animation.
+   */
   function parkOpponents(nodes) {
     var home = document.querySelector(".play-opponents__row");
-    if (home) {
-      ["seat-west", "seat-north", "seat-east"].forEach(function (id) {
-        var bin = document.getElementById(id);
-        if (!bin) return;
-        while (bin.firstChild) home.appendChild(bin.firstChild);
-      });
-    }
-    if (!useSeatRing() || !home) {
-      nodes.forEach(function (node) {
-        if (home) home.appendChild(node);
-      });
-      return;
+    if (!home) return;
+    var ring = useSeatRing();
+    var groups = [];
+    function groupFor(parent) {
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].parent === parent) return groups[i];
+      }
+      var group = { parent: parent, nodes: [] };
+      groups.push(group);
+      return group;
     }
     nodes.forEach(function (node, index) {
-      var bin = document.getElementById(seatBinId(index, nodes.length));
-      if (bin) bin.appendChild(node);
-      else home.appendChild(node);
+      var parent = home;
+      if (ring) parent = document.getElementById(seatBinId(index, nodes.length)) || home;
+      groupFor(parent).nodes.push(node);
+    });
+    groups.forEach(function (group) {
+      group.nodes.forEach(function (node, index) {
+        if (group.parent.children[index] === node) return;
+        group.parent.insertBefore(node, group.parent.children[index] || null);
+      });
     });
   }
 
@@ -697,6 +710,7 @@
     var text = dutyText(uid, rt);
     duty.hidden = !text;
     duty.textContent = text;
+    duty.title = text;
     duty.className = "play-my-duty" +
       (hasPassed(uid, rt) ? " is-finished" : "") +
       (playerMustAct(uid, rt) ? " is-acting" : "");
@@ -807,10 +821,20 @@
     }) || null;
   }
 
+  function paintSending() {
+    var note = document.getElementById("play-sending");
+    if (!note) return;
+    var on = sendCount > 0;
+    note.hidden = false;
+    note.classList.toggle("is-idle", !on);
+    if (on) note.removeAttribute("aria-hidden");
+    else note.setAttribute("aria-hidden", "true");
+    note.textContent = on ? "Sending…" : "\u00a0";
+  }
+
   function beginSend(button) {
     sendCount += 1;
-    var note = document.getElementById("play-sending");
-    if (note) note.hidden = false;
+    paintSending();
     if (!button) return;
     busyButtons[button.id] = true;
     if (!button.dataset.idleLabel) button.dataset.idleLabel = button.textContent.trim();
@@ -821,8 +845,7 @@
 
   function endSend(button) {
     sendCount = Math.max(0, sendCount - 1);
-    var note = document.getElementById("play-sending");
-    if (note) note.hidden = sendCount !== 0;
+    paintSending();
     if (button) delete busyButtons[button.id];
     updateActionButtons(uidStr(), (state && state.runtime) || {});
   }
@@ -1036,9 +1059,12 @@
     }
     var aside = document.querySelector(".play-side-actions");
     if (aside) {
-      aside.hidden = [attackBtn, takeBtn, bitoBtn, doneBtn, passBtn].every(function (btn) {
-        return !btn || btn.hidden;
+      var anyShown = [attackBtn, takeBtn, bitoBtn, doneBtn, passBtn].some(function (btn) {
+        return btn && !btn.hidden;
       });
+      var playing = !!(state && state.status === "in_progress");
+      aside.hidden = !playing && !anyShown;
+      aside.classList.toggle("is-empty", !anyShown);
     }
   }
 
@@ -1159,20 +1185,27 @@
     var inner = document.querySelector(".play-hand-fan__inner");
     var cards = sortedHand(me && me.hand, trumpSuit);
     var n = cards.length;
-    var mid = (n - 1) / 2;
     cards.forEach(function (card, idx) {
       if (!inner) return;
       var wrap = findByAttr(inner, "data-cid", card.id);
       if (!wrap) return;
-      var legal = cardIsLegal(card, uid, me, rt, trumpSuit);
-      wrap.classList.toggle("is-legal", legal);
-      wrap.classList.toggle("is-dim", !legal);
-      wrap.classList.toggle("is-selected", selected.has(card.id));
-      wrap.setAttribute("aria-pressed", selected.has(card.id) ? "true" : "false");
-      wrap.style.zIndex = selected.has(card.id) ? "40" : String(30 - Math.abs(idx - mid));
+      markHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit);
     });
     paintDefenseTargets(uid, rt, trumpSuit);
     updateActionButtons(uid, rt);
+  }
+
+  function markHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit) {
+    var mid = (n - 1) / 2;
+    var legal = cardIsLegal(card, uid, me, rt, trumpSuit);
+    var on = selected.has(card.id);
+    wrap.classList.toggle("play-card--trump", !!(trumpSuit && card.suit === trumpSuit));
+    wrap.classList.toggle("is-selected", on);
+    wrap.classList.toggle("is-legal", legal);
+    wrap.classList.toggle("is-dim", !legal);
+    wrap.setAttribute("aria-pressed", on ? "true" : "false");
+    wrap.setAttribute("aria-label", card.rank + " of " + card.suit);
+    wrap.style.zIndex = on ? "40" : String(30 - Math.abs(idx - mid));
   }
 
   function placeHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit) {
@@ -1180,17 +1213,19 @@
     var maxDist = Math.max(mid, n - 1 - mid) || 1;
     var dist = Math.abs(idx - mid);
     var norm = dist / maxDist;
-    var legal = cardIsLegal(card, uid, me, rt, trumpSuit);
-    wrap.classList.toggle("play-card--trump", !!(trumpSuit && card.suit === trumpSuit));
-    wrap.classList.toggle("is-selected", selected.has(card.id));
-    wrap.classList.toggle("is-legal", legal);
-    wrap.classList.toggle("is-dim", !legal);
-    wrap.setAttribute("aria-pressed", selected.has(card.id) ? "true" : "false");
-    wrap.setAttribute("aria-label", card.rank + " of " + card.suit);
+    markHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit);
     wrap.style.setProperty("--fan-rot", (idx - mid) * 7.25 + "deg");
     wrap.style.setProperty("--fan-y", (norm * norm * 16 + norm * 3) + "px");
     wrap.style.setProperty("--fan-x", ((idx - mid) * 0.85) + "px");
-    wrap.style.zIndex = selected.has(card.id) ? "40" : String(30 - Math.abs(idx - mid));
+  }
+
+  /** True when the fan nodes already match this display order. */
+  function handInOrder(inner, cards) {
+    if (inner.childElementCount !== cards.length) return false;
+    for (var i = 0; i < cards.length; i++) {
+      if (inner.children[i].getAttribute("data-cid") !== String(cards[i].id)) return false;
+    }
+    return true;
   }
 
   function createHandCard(card) {
@@ -1348,22 +1383,30 @@
       return !(inboundMine && inboundMine[card.id]);
     });
     var keep = {};
-    cards.forEach(function (card, idx) {
+    cards.forEach(function (card) {
       keep[card.id] = true;
-      var wrap = findByAttr(inner, "data-cid", card.id);
-      if (!wrap) {
-        wrap = createHandCard(card);
-        inner.appendChild(wrap);
-      }
-      placeHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit);
+      if (findByAttr(inner, "data-cid", card.id)) return;
+      inner.appendChild(createHandCard(card));
     });
     Array.prototype.slice.call(inner.children).forEach(function (wrap) {
       if (!keep[wrap.getAttribute("data-cid")]) wrap.remove();
     });
-    cards.forEach(function (card) {
-      var wrap = findByAttr(inner, "data-cid", card.id);
-      if (wrap) inner.appendChild(wrap);
+    /* Moving a card node restarts its transform. Skip that while the fan is unchanged. */
+    var ordered = handInOrder(inner, cards);
+    var sameFan = ordered && inner.dataset.fan === String(cards.length);
+    if (!ordered) {
+      cards.forEach(function (card) {
+        var wrap = findByAttr(inner, "data-cid", card.id);
+        if (wrap) inner.appendChild(wrap);
+      });
+    }
+    cards.forEach(function (card, idx) {
+      var wrap = inner.children[idx];
+      if (!wrap) return;
+      if (sameFan) markHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit);
+      else placeHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit);
     });
+    inner.dataset.fan = String(cards.length);
   }
 
   function selectedBeater(me) {
@@ -1682,11 +1725,11 @@
   }
 
   function paintBadge() {
-    document.querySelectorAll(".play-action-badge").forEach(function (el) {
-      el.remove();
-    });
     if (!activeBadge || Date.now() > activeBadge.until) {
       activeBadge = null;
+      document.querySelectorAll(".play-action-badge").forEach(function (el) {
+        el.remove();
+      });
       return;
     }
     var host = null;
@@ -1695,10 +1738,19 @@
       var seat = document.querySelector('.play-opponent[data-seat="' + activeBadge.userId + '"]');
       host = seat ? seat.querySelector(".play-opponent__badge") : null;
     }
+    document.querySelectorAll(".play-action-badge").forEach(function (el) {
+      if (!host || el.parentNode !== host) el.remove();
+    });
     if (!host) return;
-    var badge = document.createElement("p");
-    badge.className = "play-action-badge play-action-badge--" + (activeBadge.action || "take");
-    badge.textContent = activeBadge.text || ACTION_LABEL[activeBadge.action] || "Played";
+    var text = activeBadge.text || ACTION_LABEL[activeBadge.action] || "Played";
+    var cls = "play-action-badge play-action-badge--" + (activeBadge.action || "take");
+    var badge = host.querySelector(".play-action-badge");
+    if (badge && badge.textContent === text && badge.className === cls) return;
+    if (badge) badge.remove();
+    badge = document.createElement("p");
+    badge.className = cls;
+    badge.textContent = text;
+    badge.title = text;
     host.appendChild(badge);
   }
 
@@ -2326,6 +2378,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     loadHandSort();
+    paintSending();
     paintSortButton();
     wireSort();
     wireRematch();
