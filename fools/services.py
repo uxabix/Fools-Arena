@@ -16,6 +16,7 @@ Typical flow:
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from typing import Iterable
@@ -45,6 +46,9 @@ from fools.models import (
 from chat.services import get_lobby_chat, remove_user_from_lobby_chat
 from fools.card_catalog import ensure_playing_cards_for_deck_size
 from fools.realtime import broadcast_game, broadcast_lobby, broadcast_lobby_list
+
+logger = logging.getLogger(__name__)
+_PUBLIC_EVENT_LIMIT = 8
 
 User = get_user_model()
 
@@ -101,6 +105,44 @@ def _save_rs(game: Game, **updates):
     game.save(update_fields=["runtime_state"])
 
 
+def _record_public_event(game: Game, payload: dict):
+    """Keep a short public log of table announcements on the match.
+
+    The entry is the same information already broadcast: who acted, and
+    the cards that were shown. Hidden hands are not stored. Later saves of
+    runtime state keep the list.
+
+    Args:
+        game: Match being shown.
+        payload: ``play_announce`` body.
+    """
+    rs = _rs(game)
+    events = list(rs.get("public_events") or [])
+    entry = {
+        "action": payload.get("action") or "",
+        "user_id": str(payload.get("user_id") or ""),
+        "username": payload.get("username") or "",
+    }
+    cards = payload.get("cards") or []
+    if cards:
+        entry["cards"] = cards
+    events.append(entry)
+    rs["public_events"] = events[-_PUBLIC_EVENT_LIMIT:]
+    game.runtime_state = rs
+    game.save(update_fields=["runtime_state"])
+
+
+def _publish_play(game: Game, payload: dict):
+    """Store a public table announcement and send it to the table.
+
+    Args:
+        game: Match being shown.
+        payload: Event body for ``play_announce``.
+    """
+    _record_public_event(game, payload)
+    broadcast_game(game.id, "play_announce", payload)
+
+
 def _announce_cards(game: Game, user: User, action: str, cards: list[Card]):
     """Publish a card that is already being placed on the table.
 
@@ -114,9 +156,8 @@ def _announce_cards(game: Game, user: User, action: str, cards: list[Card]):
         action: ``attack`` or ``defend``.
         cards: Cards moving onto the table.
     """
-    broadcast_game(
-        game.id,
-        "play_announce",
+    _publish_play(
+        game,
         {
             "action": action,
             "user_id": str(user.id),
@@ -145,7 +186,7 @@ def _announce_action(game: Game, user: User, action: str, cards: list[Card] | No
     }
     if cards:
         payload["cards"] = [_card_json(card) for card in cards]
-    broadcast_game(game.id, "play_announce", payload)
+    _publish_play(game, payload)
     delay = float(getattr(django_settings, "TABLE_ACTION_DELAY", 0))
     if delay > 0:
         time.sleep(delay)
@@ -251,12 +292,31 @@ def _draw_for_player(game: Game, user: User, target_hand: int = 6):
         gp.save(update_fields=["cards_remaining"])
 
 
-def _draw_round_after_discard(game: Game, start_user_id: UUID):
+def _draw_round_after_discard(
+    game: Game, start_user_id: UUID, last_user_id: UUID | None = None
+):
+    """Refill hands to six, attacker first and the beater or taker last.
+
+    ``start_user_id`` draws first, then the other seats clockwise. When
+    ``last_user_id`` is set, that seat is moved to the end so they receive
+    whatever remains. Two players are unchanged: the defender already sits
+    last. An empty deck stops the round.
+
+    Args:
+        game: Match refilling after a beat or a take.
+        start_user_id: Seat that attacked this wave.
+        last_user_id: Seat that beat the wave or picked the cards up.
+    """
     order = _player_circle(game)
     idx = next(i for i, p in enumerate(order) if p.user_id == start_user_id)
     n = len(order)
-    for k in range(n):
-        _draw_for_player(game, order[(idx + k) % n].user, 6)
+    sequence = [order[(idx + k) % n] for k in range(n)]
+    if last_user_id is not None and last_user_id != start_user_id:
+        last = next(p for p in sequence if p.user_id == last_user_id)
+        sequence = [p for p in sequence if p.user_id != last_user_id]
+        sequence.append(last)
+    for player in sequence:
+        _draw_for_player(game, player.user, 6)
     _refresh_card_counts(game)
 
 
@@ -267,18 +327,23 @@ def _maybe_finish_game(game: Game):
     if not deck_empty:
         return
     holders = [gp for gp in _player_circle(game) if gp.cards_remaining > 0]
-    if len(holders) == 1:
-        game.status = "finished"
-        game.loser = holders[0].user
-        game.finished_at = timezone.now()
-        game.save(update_fields=["status", "loser", "finished_at"])
-        lobby = game.lobby
-        lobby.status = "waiting"
-        lobby.save(update_fields=["status"])
-        LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
-        broadcast_game(game.id, "game_finished", {"loser_id": str(game.loser_id)})
-        broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
-        publish_lobby_list(lobby.id)
+    if len(holders) > 1:
+        return
+    game.status = "finished"
+    game.loser = holders[0].user if holders else None
+    game.finished_at = timezone.now()
+    game.save(update_fields=["status", "loser", "finished_at"])
+    lobby = game.lobby
+    lobby.status = "waiting"
+    lobby.save(update_fields=["status"])
+    LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
+    broadcast_game(
+        game.id,
+        "game_finished",
+        {"loser_id": str(game.loser_id) if game.loser_id else None},
+    )
+    broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
+    publish_lobby_list(lobby.id)
 
 
 def release_finished_seats(game: Game):
@@ -343,6 +408,29 @@ def _rotate_roles_after_success(game: Game):
     new_att = old_def
     new_def = players[(idx_d + 1) % len(players)].user_id
     _save_rs(game, attacker_id=str(new_att), defender_id=str(new_def), phase=PHASE_BETWEEN)
+
+
+def _rotate_roles_after_take(game: Game):
+    """Hand the next attack to the seat after the player who picked up.
+
+    With two seats that player is the same attacker again. The player who
+    took becomes the defender only in that pair; otherwise they sit out
+    until the wave comes back around.
+    """
+    rs = _rs(game)
+    old_def = UUID(rs["defender_id"])
+    players = _player_circle(game)
+    idx_d = next(i for i, p in enumerate(players) if p.user_id == old_def)
+    n = len(players)
+    new_att = players[(idx_d + 1) % n].user_id
+    new_def = players[(idx_d + 2) % n].user_id
+    _save_rs(
+        game,
+        attacker_id=str(new_att),
+        defender_id=str(new_def),
+        phase=PHASE_BETWEEN,
+        passed_ids=[],
+    )
 
 
 def _clear_table_to_discard(game: Game):
@@ -832,6 +920,48 @@ def start_game(lobby: Lobby, user: User) -> Game:
     return game
 
 
+@transaction.atomic
+def rematch(game: Game, user: User) -> Game:
+    """Deal another game for everyone still seated in the lobby.
+
+    The host of a finished match readies every member who has not left,
+    then uses the same start rules as a new deal. Someone who already
+    left is not pulled back in. Empty chairs are filled only when the
+    lobby is set to seat bots.
+
+    Args:
+        game: Finished match whose lobby should play again.
+        user: Lobby owner.
+
+    Returns:
+        The new in-progress game.
+
+    Raises:
+        GameError: When the match is still running, the caller is not the
+            host, or the lobby cannot start.
+    """
+    if game.status != "finished":
+        raise GameError("This game has not finished", "state")
+    lobby = game.lobby
+    if lobby.owner_id != user.id:
+        raise GameError("Only the host can start another game", "forbidden")
+    if lobby.status == "closed":
+        raise GameError("Lobby is closed", "state")
+    if not LobbyPlayer.objects.filter(lobby=lobby, user=user).exclude(status="left").exists():
+        raise GameError("Not in lobby", "not_found")
+    LobbyPlayer.objects.filter(lobby=lobby, status="waiting").update(status="ready")
+    new_game = start_game(lobby, user)
+    broadcast_game(game.id, "rematch_started", {"game_id": str(new_game.id)})
+    logger.info(
+        "Rematch started: lobby=%s previous=%s game=%s host=%s",
+        lobby.id,
+        game.id,
+        new_game.id,
+        user.id,
+    )
+    return new_game
+
+
 def serialize_lobby(lobby: Lobby) -> dict:
     """Build a JSON-serializable lobby snapshot for REST responses.
 
@@ -958,7 +1088,45 @@ def serialize_game(game: Game, viewer: User) -> dict:
         "players": players_out,
         "table": table,
         "loser_id": str(game.loser_id) if game.loser_id else None,
+        "public_events": list((rs.get("public_events") or []))[-_PUBLIC_EVENT_LIMIT:],
+        "can_rematch": bool(
+            game.status == "finished"
+            and game.lobby.owner_id == viewer.id
+            and game.lobby.status != "closed"
+            and LobbyPlayer.objects.filter(lobby=game.lobby, user=viewer)
+            .exclude(status="left")
+            .exists()
+        ),
+        "next_game_id": _next_game_id(game, viewer),
     }
+
+
+def _next_game_id(game: Game, viewer: User) -> str | None:
+    """Return a later deal in this lobby when the viewer is sitting in it.
+
+    A finished table keeps its own id. If the host has already dealt again
+    and this viewer was seated, the client can follow that match even when
+    it missed the live announcement.
+
+    Args:
+        game: Match currently open in the browser.
+        viewer: Signed-in player.
+
+    Returns:
+        Id of the in-progress game, or ``None``.
+    """
+    if game.status != "finished":
+        return None
+    nxt = (
+        Game.objects.filter(lobby_id=game.lobby_id, status="in_progress")
+        .order_by("-started_at")
+        .first()
+    )
+    if nxt is None or nxt.id == game.id:
+        return None
+    if not nxt.players.filter(user=viewer).exists():
+        return None
+    return str(nxt.id)
 
 
 def _card_json(card: Card | None) -> dict | None:
@@ -1254,12 +1422,13 @@ def _complete_take(game: Game, user: User):
         user: Defender who declared the take.
     """
     rs = _rs(game)
+    attacker_id = UUID(rs["attacker_id"])
     turn = _ensure_turn(game, user)
     for tc in TableCard.objects.filter(fools=game):
         Move.objects.create(turn=turn, table_card=tc, action_type="pickup")
     _clear_table_to_hand(game, user)
-    _save_rs(game, phase=PHASE_BETWEEN, passed_ids=[])
-    _draw_round_after_discard(game, UUID(rs["attacker_id"]))
+    _draw_round_after_discard(game, attacker_id, user.id)
+    _rotate_roles_after_take(game)
     release_finished_seats(game)
     broadcast_game(game.id, "game_update", {})
     _maybe_finish_game(game)
@@ -1324,9 +1493,8 @@ def pass_throw(game: Game, user: User):
     if str(user.id) not in passed:
         passed.append(str(user.id))
         _save_rs(game, passed_ids=passed)
-    broadcast_game(
-        game.id,
-        "play_announce",
+    _publish_play(
+        game,
         {"action": "pass", "user_id": str(user.id), "username": user.username},
     )
     if pending_passers(game):
@@ -1360,8 +1528,9 @@ def bito(game: Game, user: User):
     _announce_action(game, user, "bito")
     _clear_table_to_discard(game)
     old_att = UUID(rs["attacker_id"])
+    old_def = UUID(rs["defender_id"])
     _rotate_roles_after_success(game)
-    _draw_round_after_discard(game, old_att)
+    _draw_round_after_discard(game, old_att, old_def)
     release_finished_seats(game)
     broadcast_game(game.id, "game_update", {})
     _maybe_finish_game(game)

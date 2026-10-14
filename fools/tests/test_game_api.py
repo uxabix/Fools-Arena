@@ -94,6 +94,8 @@ class TestGameLobbyAPI:
         assert detail.data["runtime"]["pending_ids"] == []
         assert detail.data["transferable"] is False
         assert detail.data["neighbor_throw_only"] is False
+        assert detail.data["public_events"] == []
+        assert detail.data["can_rematch"] is False
         me = next(p for p in detail.data["players"] if p["user_id"] == str(test_user.id))
         other = next(p for p in detail.data["players"] if p["user_id"] != str(test_user.id))
         assert me["hand"] is not None
@@ -108,6 +110,48 @@ class TestGameLobbyAPI:
         after = api.get(reverse("api-fools-state", kwargs={"game_id": gid})).data
         assert after == before
         assert spare.id not in {card["id"] for card in after["players"][0]["hand"] or []}
+
+    def test_host_can_deal_again_after_the_game(self, api, test_user, second_user, durak_deck_36):
+        """The host readies whoever is still seated and opens a new match."""
+        api.force_login(test_user)
+        created = api.post(
+            reverse("api-lobby-list"),
+            {"name": "Again", "is_private": False, "card_count": 36, "max_players": 4},
+            format="json",
+        )
+        lid = created.data["id"]
+        api.force_login(second_user)
+        api.post(reverse("api-lobby-join", kwargs={"lobby_id": lid}), {}, format="json")
+        api.force_login(test_user)
+        api.post(reverse("api-lobby-ready", kwargs={"lobby_id": lid}), {"ready": True}, format="json")
+        api.force_login(second_user)
+        api.post(reverse("api-lobby-ready", kwargs={"lobby_id": lid}), {"ready": True}, format="json")
+        api.force_login(test_user)
+        started = api.post(reverse("api-lobby-start", kwargs={"lobby_id": lid}), {}, format="json")
+        gid = started.data["id"]
+        from fools.models import Game, Lobby, LobbyPlayer
+        game = Game.objects.get(id=gid)
+        game.status = "finished"
+        game.save(update_fields=["status"])
+        lobby = Lobby.objects.get(id=lid)
+        lobby.status = "waiting"
+        lobby.save(update_fields=["status"])
+        LobbyPlayer.objects.filter(lobby=lobby).update(status="waiting")
+        api.force_login(second_user)
+        refused = api.post(reverse("api-fools-again", kwargs={"game_id": gid}), {}, format="json")
+        assert refused.status_code == status.HTTP_400_BAD_REQUEST
+        assert refused.data["code"] == "forbidden"
+        api.force_login(test_user)
+        again = api.post(reverse("api-fools-again", kwargs={"game_id": gid}), {}, format="json")
+        assert again.status_code == status.HTTP_201_CREATED
+        assert again.data["id"] != gid
+        assert again.data["status"] == "in_progress"
+        assert again.data["can_rematch"] is False
+        seated = {row["user_id"] for row in again.data["players"]}
+        assert str(test_user.id) in seated
+        assert str(second_user.id) in seated
+        followed = api.get(reverse("api-fools-state", kwargs={"game_id": gid}))
+        assert followed.data["next_game_id"] == again.data["id"]
 
     def test_public_lobby_does_not_keep_a_password(self, api, test_user):
         """A public lobby ignores a password and keeps the rules that were asked for."""

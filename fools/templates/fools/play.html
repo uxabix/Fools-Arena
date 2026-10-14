@@ -14,15 +14,22 @@
     <h2 id="play-result-title" tabindex="-1">Game over</h2>
     <p id="play-result-text"></p>
     <div class="play-result__actions">
+      <button type="button" id="play-result-again" class="game-btn game-btn--primary" hidden>Play again</button>
       <a id="play-result-lobby" class="game-btn game-btn--secondary" href="/fools/">Back to lobby</a>
-      <a class="game-btn game-btn--primary" href="/fools/">Find a game</a>
+      <a class="game-btn game-btn--secondary" href="/fools/">Find a game</a>
     </div>
+    <p id="play-result-error" class="text-error" hidden></p>
   </section>
 
   <div class="play-classic-layout">
-    <div id="opponents" class="play-opponents" aria-label="Opponents, clockwise from you"></div>
-
-    <div class="play-felt">
+    <div class="play-ring" aria-label="Seats, clockwise from you. The next player is on the left.">
+      <p id="play-seat-order" class="play-seat-order">Clockwise from you. Next player is on the left.</p>
+      <div id="opponents" class="play-opponents" aria-label="Opponents, clockwise from you"></div>
+      <div class="play-ring__body">
+        <div id="seat-west" class="play-seat-bin"></div>
+        <div class="play-ring__main">
+          <div id="seat-north" class="play-seat-bin play-seat-bin--north"></div>
+          <div class="play-felt">
       <div class="play-felt__inner">
         <div class="play-piles">
           <div id="deck-trump-corner" class="play-deck-trump" aria-label="Deck"></div>
@@ -33,10 +40,17 @@
           <div id="table-rows" class="play-table-grid"></div>
         </div>
       </div>
+          </div>
+        </div>
+        <div id="seat-east" class="play-seat-bin"></div>
+      </div>
     </div>
 
     <footer class="play-my-area" id="play-my-seat">
-      <div id="play-my-role" class="play-my-role"></div>
+      <div class="play-my-head">
+        <div id="play-my-role" class="play-my-role"></div>
+        <div id="play-my-badge" class="play-my-badge"></div>
+      </div>
       <p id="play-my-duty" class="play-my-duty" hidden></p>
       <p id="play-hint" class="play-hint" role="status"></p>
       <p id="play-sending" class="play-sending" role="status" hidden>Sending…</p>
@@ -57,6 +71,11 @@
           Done throwing
         </button>
       </aside>
+      <div class="play-hand-tools">
+        <button type="button" id="btn-sort" class="game-btn game-btn--secondary play-sort-btn" aria-label="Hand is sorted by rank. Switch to suit.">
+          Sort: rank
+        </button>
+      </div>
       <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
       <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
       <p class="play-hand-help">Select a card, then press Attack or Throw in. To beat a card, select one of yours and press the highlighted attack. Arrow keys move between cards. Dragging still works. Transfer happens only when you press Transfer.</p>
@@ -67,6 +86,7 @@
 
   <section id="play-chat" class="game-panel play-chat" hidden>
     <h2 class="game-subtitle">Table chat</h2>
+    <p id="play-chat-status" class="play-chat-status" role="status" hidden></p>
     <div id="play-chat-log" class="game-chat-log" aria-live="polite" aria-relevant="additions"></div>
     <form id="play-chat-form" class="game-chat-form">
       <input id="play-chat-input" name="content" type="text" maxlength="4000" placeholder="Message…" aria-label="Message" />

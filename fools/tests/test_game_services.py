@@ -20,6 +20,8 @@ from fools.services import (
     GameError,
     PHASE_BETWEEN,
     PHASE_BUILD,
+    _draw_round_after_discard,
+    _maybe_finish_game,
     _table_attack_ranks,
     create_lobby,
     join_lobby,
@@ -455,6 +457,8 @@ def test_take_waits_until_the_attacker_is_done(durak_deck_36, user_factory):
     pass_throw(game, attacker)
     game.refresh_from_db()
     assert game.runtime_state["phase"] == PHASE_BETWEEN
+    assert game.runtime_state["attacker_id"] == str(attacker.id)
+    assert game.runtime_state["defender_id"] == str(defender.id)
     assert not TableCard.objects.filter(fools=game).exists()
     assert PlayerHand.objects.filter(fools=game, player=defender, card=attack).exists()
 
@@ -503,3 +507,99 @@ def test_transfer_passes_the_attack_to_the_next_player(durak_deck_36, user_facto
 
     with pytest.raises(GameError):
         transfer_attack(game, nxt, [filler[0].id])
+
+
+@pytest.mark.django_db
+def test_take_passes_the_attack_to_the_next_seat(durak_deck_36, user_factory):
+    """After a take, the seat after the taker opens, and the attacker defends."""
+    attacker = user_factory(username="take3_a")
+    defender = user_factory(username="take3_b")
+    nxt = user_factory(username="take3_c")
+    lobby = Lobby.objects.create(owner=attacker, name="take-next", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=3, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_BUILD,
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender, nxt), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    attack = Card.objects.filter(rank__value=6, special_card__isnull=True).first()
+    spare = list(
+        Card.objects.filter(special_card__isnull=True).exclude(id__in=[attack.id, trump.id])[:3]
+    )
+    TableCard.objects.create(fools=game, attack_card=attack)
+    PlayerHand.objects.create(fools=game, player=attacker, card=spare[0], order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=defender, card=spare[1], order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=nxt, card=spare[2], order_in_hand=1)
+
+    take_table(game, defender)
+    pass_throw(game, attacker)
+    pass_throw(game, nxt)
+    game.refresh_from_db()
+    assert game.runtime_state["attacker_id"] == str(nxt.id)
+    assert game.runtime_state["defender_id"] == str(attacker.id)
+    assert PlayerHand.objects.filter(fools=game, player=defender, card=attack).exists()
+
+
+@pytest.mark.django_db
+def test_refill_gives_the_defender_the_last_cards(durak_deck_36, user_factory):
+    """Two leftover deck cards go to the attacker and the next seat, not the defender."""
+    attacker = user_factory(username="draw_a")
+    defender = user_factory(username="draw_b")
+    nxt = user_factory(username="draw_c")
+    lobby = Lobby.objects.create(owner=attacker, name="draw-order", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=3, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True, rank__value=14).first()
+    game = Game.objects.create(
+        lobby=lobby, trump_card=trump, status="in_progress", runtime_state={}
+    )
+    for seat, user in enumerate((attacker, defender, nxt), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=5)
+    used = [trump.id]
+    hands = list(Card.objects.filter(special_card__isnull=True).exclude(id__in=used)[:17])
+    for offset, user in enumerate((attacker, defender, nxt)):
+        for index, card in enumerate(hands[offset * 5:(offset + 1) * 5]):
+            PlayerHand.objects.create(fools=game, player=user, card=card, order_in_hand=index + 1)
+            used.append(card.id)
+    for position, card in enumerate(hands[15:17]):
+        GameDeck.objects.create(fools=game, card=card, position=position)
+
+    _draw_round_after_discard(game, attacker.id, defender.id)
+
+    assert PlayerHand.objects.filter(fools=game, player=attacker).count() == 6
+    assert PlayerHand.objects.filter(fools=game, player=nxt).count() == 6
+    assert PlayerHand.objects.filter(fools=game, player=defender).count() == 5
+    assert not GameDeck.objects.filter(fools=game).exists()
+
+
+@pytest.mark.django_db
+def test_empty_hands_end_the_match_with_no_fool(durak_deck_36, user_factory):
+    """A last beat that empties every hand finishes the match without a fool."""
+    attacker = user_factory(username="draw_end_a")
+    defender = user_factory(username="draw_end_b")
+    lobby = Lobby.objects.create(owner=attacker, name="draw-end", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={"phase": PHASE_BETWEEN, "attacker_id": str(attacker.id)},
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=0)
+        LobbyPlayer.objects.create(lobby=lobby, user=user, status="playing")
+
+    _maybe_finish_game(game)
+    game.refresh_from_db()
+    lobby.refresh_from_db()
+    assert game.status == "finished"
+    assert game.loser_id is None
+    assert lobby.status == "waiting"

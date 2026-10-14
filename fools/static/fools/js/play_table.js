@@ -435,11 +435,11 @@
 
   function seatPlace(index, total, playerId, uid, rt) {
     var notes = [];
-    var defenderPassing = state.transferable && rt && String(rt.defender_id) === String(uid) &&
-      (rt.phase === "build" || rt.phase === "defend");
+    var canSendTransfer = String(rt && rt.defender_id) === String(uid) && transferRoom(1);
     if (total === 1) notes.push("Across");
-    else if (index === 0) notes.push(defenderPassing ? "Transfer to" : "Next");
+    else if (index === 0) notes.push(canSendTransfer ? "Transfer to" : "Next");
     else if (index === total - 1) notes.push("Previous");
+    if (total === 1 && canSendTransfer) notes.push("Transfer to");
     if (throwNeighborIds(rt)[String(playerId)]) notes.push("Neighbor");
     return notes.join(" · ");
   }
@@ -475,6 +475,7 @@
       '<span class="play-opponent__name"></span>' +
       '<span class="play-opponent__meta"></span>' +
       '<span class="play-opponent__duty"></span>' +
+      '<span class="play-opponent__badge"></span>' +
       "</div>" +
       '<div class="play-opponent__backs"></div>';
     return div;
@@ -519,12 +520,63 @@
     }
   }
 
+  function findOpponent(id) {
+    var nodes = document.querySelectorAll(".play-opponent");
+    var want = String(id);
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute("data-seat") === want) return nodes[i];
+    }
+    return null;
+  }
+
+  function useSeatRing() {
+    return window.matchMedia("(min-width: 900px)").matches;
+  }
+
+  function seatBinId(index, total) {
+    var plans = {
+      1: ["seat-north"],
+      2: ["seat-west", "seat-east"],
+      3: ["seat-west", "seat-north", "seat-east"],
+      4: ["seat-west", "seat-north", "seat-north", "seat-east"],
+      5: ["seat-west", "seat-north", "seat-north", "seat-north", "seat-east"],
+      6: ["seat-west", "seat-west", "seat-north", "seat-north", "seat-east", "seat-east"],
+      7: ["seat-west", "seat-west", "seat-north", "seat-north", "seat-north", "seat-east", "seat-east"],
+    };
+    var plan = plans[total] || plans[7];
+    return plan[Math.min(index, plan.length - 1)];
+  }
+
+  function parkOpponents(nodes) {
+    var home = document.querySelector(".play-opponents__row");
+    if (home) {
+      ["seat-west", "seat-north", "seat-east"].forEach(function (id) {
+        var bin = document.getElementById(id);
+        if (!bin) return;
+        while (bin.firstChild) home.appendChild(bin.firstChild);
+      });
+    }
+    if (!useSeatRing() || !home) {
+      nodes.forEach(function (node) {
+        if (home) home.appendChild(node);
+      });
+      return;
+    }
+    nodes.forEach(function (node, index) {
+      var bin = document.getElementById(seatBinId(index, nodes.length));
+      if (bin) bin.appendChild(node);
+      else home.appendChild(node);
+    });
+  }
+
   function renderOpponents(uid, rt) {
     var el = document.getElementById("opponents");
     if (!el) return;
     var others = otherPlayers(uid);
+    var ring = document.querySelector(".play-ring");
+    if (ring) ring.dataset.seats = String(others.length);
     if (!others.length) {
-      el.innerHTML = "";
+      document.querySelectorAll(".play-opponent").forEach(function (node) { node.remove(); });
       return;
     }
     var row = el.querySelector(".play-opponents__row");
@@ -539,23 +591,22 @@
       el.appendChild(row);
     }
     var keep = {};
+    var seated = [];
     others.forEach(function (player, index) {
       var id = String(player.user_id);
       keep[id] = true;
-      var div = findByAttr(row, "data-seat", id);
+      var div = findOpponent(id);
       if (!div) {
         div = createOpponent(player);
         row.appendChild(div);
       }
       fillOpponent(div, player, index, others.length, uid, rt);
+      seated.push(div);
     });
-    Array.prototype.slice.call(row.children).forEach(function (div) {
+    document.querySelectorAll(".play-opponent").forEach(function (div) {
       if (!keep[div.getAttribute("data-seat")]) div.remove();
     });
-    others.forEach(function (player) {
-      var div = findByAttr(row, "data-seat", player.user_id);
-      if (div) row.appendChild(div);
-    });
+    parkOpponents(seated);
   }
 
   /** Stable pseudo-random peek offsets per table row so stacks stay readable when overlapping. */
@@ -598,6 +649,9 @@
   function renderDeckTrumpCorner(tcTrump, deckN, trumpInDeck) {
     var el = document.getElementById("deck-trump-corner");
     if (!el) return;
+    var sig = String(deckN) + ":" + (trumpInDeck ? "1" : "0") + ":" + (tcTrump ? tcTrump.id : "");
+    if (el.dataset.sig === sig) return;
+    el.dataset.sig = sig;
     var parts = ['<p class="play-pile__label">Deck</p>', '<div class="play-deck-trump-pile">'];
     if (trumpInDeck && tcTrump) {
       parts.push(
@@ -633,6 +687,8 @@
     var el = document.getElementById("discard-pile");
     if (!el) return;
     var count = state.discard_count || 0;
+    if (el.dataset.sig === String(count)) return;
+    el.dataset.sig = String(count);
     var parts = ['<p class="play-pile__label">Discard</p>'];
     if (count > 0) {
       parts.push('<div class="play-discard__stack">');
@@ -1103,16 +1159,58 @@
     });
 
     var proto = location.protocol === "https:" ? "wss:" : "ws:";
-    var socket = new WebSocket(proto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
-    socket.onmessage = function (ev) {
-      var message = null;
-      try {
-        message = JSON.parse(ev.data);
-      } catch (ignore) {
-        message = null;
+    var chatRetries = 0;
+    var chatToken = 0;
+
+    function setChatLink(text) {
+      var note = document.getElementById("play-chat-status");
+      if (!note) return;
+      if (!text) {
+        note.hidden = true;
+        note.textContent = "";
+        return;
       }
-      if (message && message.event === "lobby_chat") appendMessage(message.payload || {});
-    };
+      note.hidden = false;
+      note.textContent = text;
+    }
+
+    function connectChat() {
+      var token = ++chatToken;
+      if (chatRetries > 0) setChatLink("Reconnecting to chat…");
+      var socket = new WebSocket(proto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
+      socket.onopen = function () {
+        if (token !== chatToken) return;
+        chatRetries = 0;
+        setChatLink("");
+        api("GET", url).then(function (rows) {
+          (rows || []).forEach(appendMessage);
+        }).catch(function (e) {
+          if (error) error.textContent = e.message || "Could not load chat.";
+        });
+      };
+      socket.onmessage = function (ev) {
+        var message = null;
+        try {
+          message = JSON.parse(ev.data);
+        } catch (ignore) {
+          message = null;
+        }
+        if (message && message.event === "lobby_chat") appendMessage(message.payload || {});
+      };
+      socket.onclose = function () {
+        if (token !== chatToken) return;
+        setChatLink("Chat disconnected.");
+        var delay = Math.min(10000, 800 * Math.pow(2, Math.min(chatRetries, 4)));
+        chatRetries += 1;
+        window.setTimeout(function () {
+          if (token !== chatToken) return;
+          setChatLink("Reconnecting to chat…");
+          connectChat();
+        }, delay);
+      };
+    }
+
+    connectChat();
   }
 
   function toggleCard(cardId) {
@@ -1131,7 +1229,7 @@
 
   function refreshHandMarks(uid, me, rt, trumpSuit) {
     var inner = document.querySelector(".play-hand-fan__inner");
-    var cards = (me && me.hand) || [];
+    var cards = sortedHand(me && me.hand, trumpSuit);
     var n = cards.length;
     var mid = (n - 1) / 2;
     cards.forEach(function (card, idx) {
@@ -1206,6 +1304,85 @@
     return wrap;
   }
 
+  var SUIT_ORDER = { Spades: 0, Hearts: 1, Diamonds: 2, Clubs: 3 };
+  var HAND_SORTS = ["rank", "suit", "dealt"];
+  var HAND_SORT_KEY = "fools-hand-sort";
+  var handSort = "rank";
+
+  function suitKey(suit, trumpSuit) {
+    if (trumpSuit && suit === trumpSuit) return -1;
+    return SUIT_ORDER[suit] != null ? SUIT_ORDER[suit] : 9;
+  }
+
+  /** Display order only. Requests still use the hand order from the server. */
+  function sortedHand(hand, trumpSuit) {
+    var cards = (hand || []).slice();
+    if (handSort === "dealt") return cards;
+    cards.sort(function (a, b) {
+      if (handSort === "suit") {
+        var bySuit = suitKey(a.suit, trumpSuit) - suitKey(b.suit, trumpSuit);
+        if (bySuit) return bySuit;
+        if (a.value !== b.value) return a.value - b.value;
+      } else if (a.value !== b.value) {
+        return a.value - b.value;
+      } else {
+        var bySuitInRank = suitKey(a.suit, trumpSuit) - suitKey(b.suit, trumpSuit);
+        if (bySuitInRank) return bySuitInRank;
+      }
+      if (String(a.id) < String(b.id)) return -1;
+      if (String(a.id) > String(b.id)) return 1;
+      return 0;
+    });
+    return cards;
+  }
+
+  function nextHandSort(mode) {
+    var index = HAND_SORTS.indexOf(mode);
+    return HAND_SORTS[(index + 1) % HAND_SORTS.length];
+  }
+
+  function sortPhrase(mode) {
+    if (mode === "suit") return "suit";
+    if (mode === "dealt") return "dealt order";
+    return "rank";
+  }
+
+  function paintSortButton() {
+    var btn = document.getElementById("btn-sort");
+    if (!btn) return;
+    var label = handSort === "dealt" ? "dealt" : handSort;
+    btn.textContent = "Sort: " + label;
+    btn.setAttribute(
+      "aria-label",
+      "Hand is sorted by " + sortPhrase(handSort) + ". Switch to " + sortPhrase(nextHandSort(handSort)) + "."
+    );
+  }
+
+  function loadHandSort() {
+    try {
+      var saved = window.localStorage.getItem(HAND_SORT_KEY);
+      if (HAND_SORTS.indexOf(saved) >= 0) handSort = saved;
+    } catch (ignore) {}
+  }
+
+  function cycleHandSort() {
+    handSort = nextHandSort(handSort);
+    try {
+      window.localStorage.setItem(HAND_SORT_KEY, handSort);
+    } catch (ignore) {}
+    paintSortButton();
+    var uid = uidStr();
+    var rt = (state && state.runtime) || {};
+    renderHand(uid, viewer(uid), rt, state && state.trump_card ? state.trump_card.suit : null);
+  }
+
+  function wireSort() {
+    var btn = document.getElementById("btn-sort");
+    if (!btn || btn.dataset.wired === "1") return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", cycleHandSort);
+  }
+
   function renderHand(uid, me, rt, trumpSuit) {
     var handEl = document.getElementById("hand");
     if (!handEl) return;
@@ -1219,7 +1396,7 @@
       inner.className = "play-hand-fan__inner";
       handEl.appendChild(inner);
     }
-    var cards = (me && me.hand) || [];
+    var cards = sortedHand(me && me.hand, trumpSuit);
     var keep = {};
     cards.forEach(function (card, idx) {
       keep[card.id] = true;
@@ -1411,6 +1588,10 @@
 
     ensureTableChat(state.lobby_id);
     renderStatusbar(uid, me, rt);
+    if (state.next_game_id && String(state.next_game_id) !== String(gameId)) {
+      window.location.href = "/fools/play/" + state.next_game_id + "/";
+      return;
+    }
     renderMyRole(uid, rt);
     renderOpponents(uid, rt);
     renderDeckTrumpCorner(tcTrump, state.deck_remaining || 0, !!state.trump_in_deck);
@@ -1430,6 +1611,7 @@
       hint.hidden = !hintLine;
     }
     renderResult(uid);
+    applyPublicEvents();
     paintBadge();
   }
 
@@ -1477,7 +1659,7 @@
       var line = (payload.username || nameOf(payload.user_id)) + " — " + phrase;
       if (recentActions[0] !== line) {
         recentActions.unshift(line);
-        recentActions = recentActions.slice(0, 5);
+        recentActions = recentActions.slice(0, 8);
       }
       paintHistory();
     }
@@ -1492,10 +1674,22 @@
       if (!Array.isArray(parsed)) return;
       recentActions = parsed.filter(function (line) {
         return typeof line === "string" && line;
-      }).slice(0, 5);
+      }).slice(0, 8);
     } catch (ignore) {
       recentActions = [];
     }
+  }
+
+  function applyPublicEvents() {
+    var events = state && state.public_events;
+    if (!events || !events.length) return;
+    var lines = [];
+    events.forEach(function (event) {
+      var who = event.username || nameOf(event.user_id);
+      lines.push(who + " — " + actionPhrase(event));
+    });
+    recentActions = lines.slice(-8).reverse();
+    paintHistory();
   }
 
   function paintHistory() {
@@ -1532,12 +1726,17 @@
       activeBadge = null;
       return;
     }
-    var seat = document.querySelector('[data-seat="' + activeBadge.userId + '"]');
-    if (!seat) return;
+    var host = null;
+    if (String(activeBadge.userId) === uidStr()) host = document.getElementById("play-my-badge");
+    else {
+      var seat = document.querySelector('.play-opponent[data-seat="' + activeBadge.userId + '"]');
+      host = seat ? seat.querySelector(".play-opponent__badge") : null;
+    }
+    if (!host) return;
     var badge = document.createElement("p");
     badge.className = "play-action-badge play-action-badge--" + (activeBadge.action || "take");
     badge.textContent = activeBadge.text || ACTION_LABEL[activeBadge.action] || "Played";
-    seat.appendChild(badge);
+    host.appendChild(badge);
   }
 
   function clearTarget(kind, takerId) {
@@ -1598,15 +1797,46 @@
       if (mine) text.textContent = "You lost this game. Everyone else is out.";
       else if (loser) text.textContent = loser.username + " is the fool.";
       else text.textContent = "This game has finished.";
+      if (!state.can_rematch) {
+        text.textContent += " The host can deal another game for everyone still in the lobby.";
+      }
     }
     if (lobby) {
       lobby.href = state.lobby_id ? "/fools/lobbies/" + state.lobby_id + "/" : "/fools/";
     }
+    var again = document.getElementById("play-result-again");
+    if (again) again.hidden = !state.can_rematch;
     panel.hidden = false;
     if (!resultFocused && title) {
       resultFocused = true;
       title.focus();
     }
+  }
+
+  function wireRematch() {
+    var btn = document.getElementById("play-result-again");
+    if (!btn || btn.dataset.wired === "1") return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", function () {
+      var error = document.getElementById("play-result-error");
+      if (error) {
+        error.hidden = true;
+        error.textContent = "";
+      }
+      btn.disabled = true;
+      var label = btn.textContent;
+      btn.textContent = "Starting…";
+      api("POST", BASE + "again/", {}).then(function (next) {
+        if (next && next.id) window.location.href = "/fools/play/" + next.id + "/";
+      }).catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = label;
+        if (error) {
+          error.hidden = false;
+          error.textContent = e.message || "Could not start another game.";
+        }
+      });
+    });
   }
 
   function applyState(next, clearSelection) {
@@ -1818,6 +2048,11 @@
       } catch (ignore) {
         message = null;
       }
+      if (message && message.event === "rematch_started") {
+        var nextGame = message.payload && message.payload.game_id;
+        if (nextGame) window.location.href = "/fools/play/" + nextGame + "/";
+        return;
+      }
       if (message && message.event === "play_announce") {
         showActionBadge(message.payload || {}, true);
         return;
@@ -1840,6 +2075,14 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    loadHandSort();
+    paintSortButton();
+    wireSort();
+    wireRematch();
+    var seatLayout = window.matchMedia("(min-width: 900px)");
+    seatLayout.addEventListener("change", function () {
+      if (state) render(state.table || []);
+    });
     loadHistory();
     paintHistory();
     wireActionButtons();

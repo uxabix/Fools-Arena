@@ -44,6 +44,7 @@ from fools.services import (
     start_game,
     take_table,
     transfer_attack,
+    rematch,
 )
 
 
@@ -215,6 +216,23 @@ class LobbyStartAPI(APIView):
         except GameError as e:
             return _err(e)
         return Response(serialize_game(game, request.user), status=status.HTTP_201_CREATED)
+
+
+class GameRematchAPI(APIView):
+    """Host of a finished match deals another game for whoever is still seated."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, game_id):
+        game = get_object_or_404(Game, id=game_id)
+        if not game.players.filter(user=request.user).exists():
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        try:
+            new_game = rematch(game, request.user)
+            new_game = _continue_bots(new_game)
+        except GameError as e:
+            return _err(e)
+        return Response(serialize_game(new_game, request.user), status=status.HTTP_201_CREATED)
 
 
 class GameStateAPI(APIView):
