@@ -44,10 +44,6 @@
     return m[rank] || rank;
   }
 
-  function isRedSuit(suit) {
-    return suit === "Hearts" || suit === "Diamonds";
-  }
-
   function suitNameEn(suit) {
     var m = { Hearts: "hearts", Diamonds: "diamonds", Clubs: "clubs", Spades: "spades" };
     return m[suit] || suit;
@@ -69,129 +65,55 @@
     return name;
   }
 
-  /**
-   * @param {{rank:string,suit:string}} card
-   * @param {{mini?:boolean}} opts
-   */
-  function cardSvgOuterHTML(card, opts) {
-    opts = opts || {};
-    var mini = !!opts.mini;
-    var ink = isRedSuit(card.suit) ? "#b71c1c" : "#212121";
-    var sym = SUIT_SYMBOL[card.suit] || "?";
-    var rnk = rankShort(card.rank);
-    var vb = mini ? "0 0 58 80" : "0 0 76 104";
-    var fsCorner = mini ? 10 : 11;
-    var fsCenter = mini ? 28 : 36;
-    var rw = mini ? 54 : 70;
-    var rh = mini ? 76 : 98;
-    var rx = mini ? 2 : 2;
-    var ry = mini ? 2 : 2;
-    var brRankX = mini ? 52 : 67;
-    var brRankY = mini ? 72 : 93;
-    var brSymX = mini ? 52 : 67;
-    var brSymY = mini ? 59 : 77;
-    var brSymFs = mini ? 10 : 11;
+  /** Catalog ranks are "6" and "10". Word names are accepted too. */
+  var CARD_RANK_FILE = {
+    Ace: "ace",
+    King: "king",
+    Queen: "queen",
+    Jack: "jack",
+    Ten: "10",
+    "10": "10",
+    Nine: "9",
+    "9": "9",
+    Eight: "8",
+    "8": "8",
+    Seven: "7",
+    "7": "7",
+    Six: "6",
+    "6": "6",
+    Five: "5",
+    "5": "5",
+    Four: "4",
+    "4": "4",
+    Three: "3",
+    "3": "3",
+    Two: "2",
+    "2": "2",
+  };
 
-    return (
-      '<svg class="play-card-svg" viewBox="' +
-      vb +
-      '" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" shape-rendering="geometricPrecision" text-rendering="geometricPrecision" overflow="hidden">' +
-      '<rect x="' +
-      rx +
-      '" y="' +
-      ry +
-      '" width="' +
-      rw +
-      '" height="' +
-      rh +
-      '" rx="5" fill="#faf8f5" stroke="#2c2c2c" stroke-width="1.2"/>' +
-      '<text x="' +
-      (mini ? 7 : 8) +
-      '" y="' +
-      (mini ? 17 : 20) +
-      '" font-size="' +
-      fsCorner +
-      '" font-weight="700" fill="' +
-      ink +
-      '" font-family="Georgia,serif">' +
-      rnk +
-      "</text>" +
-      '<text x="' +
-      (mini ? 7 : 8) +
-      '" y="' +
-      (mini ? 31 : 36) +
-      '" font-size="' +
-      (mini ? 11 : 13) +
-      '" fill="' +
-      ink +
-      '">' +
-      sym +
-      "</text>" +
-      '<text x="' +
-      (mini ? 29 : 37) +
-      '" y="' +
-      (mini ? 49 : 64) +
-      '" font-size="' +
-      fsCenter +
-      '" text-anchor="middle" fill="' +
-      ink +
-      '">' +
-      sym +
-      "</text>" +
-      '<text x="' +
-      brSymX +
-      '" y="' +
-      brSymY +
-      '" font-size="' +
-      brSymFs +
-      '" text-anchor="end" fill="' +
-      ink +
-      '">' +
-      sym +
-      "</text>" +
-      '<text x="' +
-      brRankX +
-      '" y="' +
-      brRankY +
-      '" font-size="' +
-      fsCorner +
-      '" font-weight="700" fill="' +
-      ink +
-      '" font-family="Georgia,serif" text-anchor="end">' +
-      rnk +
-      "</text>" +
-      "</svg>"
-    );
+  function cardAsset(file) {
+    var base = window.FOOLS_CARD_BASE || "/static/fools/cards/";
+    return base + file;
   }
 
-  function cardBackSvgHTML(mini) {
-    var vb = mini ? "0 0 58 80" : "0 0 76 104";
-    var w = mini ? 54 : 70;
-    var h = mini ? 76 : 98;
-    var pid = "pb-" + Math.random().toString(36).slice(2, 11);
-    return (
-      '<svg class="play-card-svg play-card-svg--back" viewBox="' +
-      vb +
-      '" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" shape-rendering="geometricPrecision" overflow="hidden">' +
-      '<defs><pattern id="' +
-      pid +
-      '" width="8" height="8" patternUnits="userSpaceOnUse">' +
-      '<rect width="8" height="8" fill="#334b66"/>' +
-      '<path d="M0 8 L8 0 M-2 2 L2 -2 M6 10 L10 6" stroke="#1a2538" stroke-width="1.05" fill="none"/></pattern></defs>' +
-      '<rect x="2" y="2" width="' +
-      w +
-      '" height="' +
-      h +
-      '" rx="5" fill="url(#' +
-      pid +
-      ')" stroke="#c9a227" stroke-width="1.5"/>' +
-      '<rect x="6" y="6" width="' +
-      (w - 8) +
-      '" height="' +
-      (h - 8) +
-      '" rx="3" fill="none" stroke="rgba(201,162,39,0.45)" stroke-width="1"/>' +
-      "</svg>"
-    );
+  function cardImageHTML(src, extraClass) {
+    return '<img class="play-card-svg' + (extraClass ? " " + extraClass : "") +
+      '" src="' + src + '" alt="" draggable="false">';
+  }
+
+  /**
+   * Face art is a public-domain SVG. See README, Card artwork.
+   * @param {{rank:string,suit:string}} card
+   */
+  function cardSvgOuterHTML(card) {
+    var rank = CARD_RANK_FILE[card.rank];
+    var suit = String(card.suit || "").toLowerCase();
+    if (!rank || !suit) return cardBackSvgHTML();
+    return cardImageHTML(cardAsset(rank + "-" + suit + ".svg"), "");
+  }
+
+  function cardBackSvgHTML() {
+    return cardImageHTML(cardAsset("back.svg"), "play-card-svg--back");
   }
 
   function setDragCardIds(ev, ids) {
@@ -500,7 +422,8 @@
     }
     var name = div.querySelector(".play-opponent__name");
     if (name) name.textContent = player.username || "";
-    var n = player.cards_remaining != null ? player.cards_remaining : 0;
+    var hidden = inboundOpp && inboundOpp[String(player.user_id)] ? inboundOpp[String(player.user_id)] : 0;
+    var n = Math.max(0, (player.cards_remaining != null ? player.cards_remaining : 0) - hidden);
     var place = seatPlace(index, total, player.user_id, uid, rt);
     var meta = div.querySelector(".play-opponent__meta");
     if (meta) {
@@ -890,6 +813,7 @@
     if (note) note.hidden = false;
     if (!button) return;
     busyButtons[button.id] = true;
+    if (!button.dataset.idleLabel) button.dataset.idleLabel = button.textContent.trim();
     button.textContent = "Sending…";
     button.disabled = true;
     button.setAttribute("aria-disabled", "true");
@@ -1095,11 +1019,15 @@
       setIdleLabel(attackBtn, rt.phase === "between" ? "Attack" : "Throw in");
       settleButton(attackBtn, !canAttack, !(canAttack && attackSelectionFits(chosen, uid, rt)));
     }
-    settleButton(takeBtn, !(show && isDef), false);
+    setIdleLabel(takeBtn, "Take cards");
+    settleButton(takeBtn, !(show && isDef && !allDefended), false);
+    setIdleLabel(bitoBtn, "Beaten");
     settleButton(bitoBtn, !(show && isAtt && allDefended), false);
+    setIdleLabel(doneBtn, "Done throwing");
     settleButton(doneBtn, !(inProg && mustConfirm(uid, rt)), false);
     if (passBtn) {
-      var canPass = show && isDef && transferRoom(1);
+      var canPass = show && isDef && !allDefended && transferRoom(1);
+      setIdleLabel(passBtn, "Transfer");
       settleButton(
         passBtn,
         !canPass,
@@ -1294,9 +1222,11 @@
     wrap.addEventListener("dragstart", function (ev) {
       setDragCardIds(ev, attackPayloadFromDrag(card.id));
       wrap.classList.add("is-dragging");
+      markDropTargets(attackPayloadFromDrag(card.id));
     });
     wrap.addEventListener("dragend", function () {
       wrap.classList.remove("is-dragging");
+      clearDropTargets();
       if (!handDirty) return;
       handDirty = false;
       render(state.table || []);
@@ -1305,64 +1235,82 @@
   }
 
   var SUIT_ORDER = { Spades: 0, Hearts: 1, Diamonds: 2, Clubs: 3 };
-  var HAND_SORTS = ["rank", "suit", "dealt"];
+  var HAND_SORTS = ["suit-left", "suit-right", "rank-ltr", "rank-rtl", "dealt", "dealt-rev"];
   var HAND_SORT_KEY = "fools-hand-sort";
-  var handSort = "rank";
+  var handSort = "suit-left";
+  var SORT_LABEL = {
+    "suit-left": "Suit · trump left",
+    "suit-right": "Suit · trump right",
+    "rank-ltr": "Rank · low to high",
+    "rank-rtl": "Rank · high to low",
+    "dealt": "Dealt",
+    "dealt-rev": "Dealt · reversed",
+  };
 
-  function suitKey(suit, trumpSuit) {
-    if (trumpSuit && suit === trumpSuit) return -1;
-    return SUIT_ORDER[suit] != null ? SUIT_ORDER[suit] : 9;
+  function rememberedSort(saved) {
+    if (HAND_SORTS.indexOf(saved) >= 0) return saved;
+    if (saved === "suit") return "suit-left";
+    if (saved === "rank") return "rank-ltr";
+    if (saved === "dealt") return "dealt";
+    return "suit-left";
+  }
+
+  function suitKey(suit, trumpSuit, trumpOnRight) {
+    var base = SUIT_ORDER[suit] != null ? SUIT_ORDER[suit] : 4;
+    if (trumpSuit && suit === trumpSuit) return trumpOnRight ? 8 : -1;
+    return base;
   }
 
   /** Display order only. Requests still use the hand order from the server. */
   function sortedHand(hand, trumpSuit) {
     var cards = (hand || []).slice();
     if (handSort === "dealt") return cards;
+    if (handSort === "dealt-rev") {
+      cards.reverse();
+      return cards;
+    }
+    var bySuit = handSort === "suit-left" || handSort === "suit-right";
+    var trumpOnRight = handSort === "suit-right";
     cards.sort(function (a, b) {
-      if (handSort === "suit") {
-        var bySuit = suitKey(a.suit, trumpSuit) - suitKey(b.suit, trumpSuit);
-        if (bySuit) return bySuit;
-        if (a.value !== b.value) return a.value - b.value;
+      if (bySuit) {
+        var suitDiff = suitKey(a.suit, trumpSuit, trumpOnRight) - suitKey(b.suit, trumpSuit, trumpOnRight);
+        if (suitDiff) return suitDiff;
       } else if (a.value !== b.value) {
         return a.value - b.value;
-      } else {
-        var bySuitInRank = suitKey(a.suit, trumpSuit) - suitKey(b.suit, trumpSuit);
-        if (bySuitInRank) return bySuitInRank;
       }
+      if (a.value !== b.value) return a.value - b.value;
+      var within = suitKey(a.suit, trumpSuit, false) - suitKey(b.suit, trumpSuit, false);
+      if (within) return within;
       if (String(a.id) < String(b.id)) return -1;
       if (String(a.id) > String(b.id)) return 1;
       return 0;
     });
+    if (handSort === "rank-rtl") cards.reverse();
     return cards;
   }
 
   function nextHandSort(mode) {
     var index = HAND_SORTS.indexOf(mode);
+    if (index < 0) index = 0;
     return HAND_SORTS[(index + 1) % HAND_SORTS.length];
-  }
-
-  function sortPhrase(mode) {
-    if (mode === "suit") return "suit";
-    if (mode === "dealt") return "dealt order";
-    return "rank";
   }
 
   function paintSortButton() {
     var btn = document.getElementById("btn-sort");
     if (!btn) return;
-    var label = handSort === "dealt" ? "dealt" : handSort;
-    btn.textContent = "Sort: " + label;
+    btn.textContent = SORT_LABEL[handSort] || SORT_LABEL["suit-left"];
     btn.setAttribute(
       "aria-label",
-      "Hand is sorted by " + sortPhrase(handSort) + ". Switch to " + sortPhrase(nextHandSort(handSort)) + "."
+      "Hand sort: " + btn.textContent + ". Switch to " + (SORT_LABEL[nextHandSort(handSort)] || "") + "."
     );
   }
 
   function loadHandSort() {
     try {
-      var saved = window.localStorage.getItem(HAND_SORT_KEY);
-      if (HAND_SORTS.indexOf(saved) >= 0) handSort = saved;
-    } catch (ignore) {}
+      handSort = rememberedSort(window.localStorage.getItem(HAND_SORT_KEY));
+    } catch (ignore) {
+      handSort = "suit-left";
+    }
   }
 
   function cycleHandSort() {
@@ -1396,7 +1344,9 @@
       inner.className = "play-hand-fan__inner";
       handEl.appendChild(inner);
     }
-    var cards = sortedHand(me && me.hand, trumpSuit);
+    var cards = sortedHand(me && me.hand, trumpSuit).filter(function (card) {
+      return !(inboundMine && inboundMine[card.id]);
+    });
     var keep = {};
     cards.forEach(function (card, idx) {
       keep[card.id] = true;
@@ -1489,6 +1439,7 @@
       ev.preventDefault();
       playDefenseOn(el);
     });
+    watchDropHover(el);
   }
 
   function stackNodes(row, previous, uid) {
@@ -1505,6 +1456,7 @@
     if (row.defense && (!previous || !previous.defense)) {
       def.classList.add("is-covering");
       if (String((state.runtime || {}).defender_id) === String(uid)) def.classList.add("is-from-me");
+      forgetArrival(def);
     }
     var atk = document.createElement("div");
     atk.className = "play-card play-card--table play-card--stack-atk";
@@ -1530,7 +1482,17 @@
     if (row.defense && (!previous || !previous.defense)) {
       def.classList.add("is-covering");
       if (String((state.runtime || {}).defender_id) === String(uid)) def.classList.add("is-from-me");
+      forgetArrival(def);
     }
+  }
+
+  function forgetArrival(el) {
+    function done(ev) {
+      if (ev.target !== el) return;
+      el.classList.remove("is-arriving", "is-from-me", "is-covering");
+      el.removeEventListener("animationend", done);
+    }
+    el.addEventListener("animationend", done);
   }
 
   function renderTable(previousTable, uid, rt, trumpSuit) {
@@ -1552,6 +1514,7 @@
         if (!seen[row.id]) {
           el.classList.add("is-arriving");
           if (fromMe) el.classList.add("is-from-me");
+          forgetArrival(el);
         }
         if (!row.defense) el.classList.add("play-table-pair--open");
         el.appendChild(stackNodes(row, seen[row.id], uid));
@@ -1563,10 +1526,6 @@
     });
     Array.prototype.slice.call(tbl.children).forEach(function (el) {
       if (!keep[el.dataset.tableCardId]) el.remove();
-    });
-    rows.forEach(function (row) {
-      var el = findByAttr(tbl, "data-table-card-id", row.id);
-      if (el) tbl.appendChild(el);
     });
     paintDefenseTargets(uid, rt, trumpSuit);
   }
@@ -1594,7 +1553,8 @@
     }
     renderMyRole(uid, rt);
     renderOpponents(uid, rt);
-    renderDeckTrumpCorner(tcTrump, state.deck_remaining || 0, !!state.trump_in_deck);
+    if (dealView) renderDeckTrumpCorner(tcTrump, dealView.deck, dealView.trump);
+    else renderDeckTrumpCorner(tcTrump, state.deck_remaining || 0, !!state.trump_in_deck);
     renderDiscard();
 
     pruneSelection(me && me.hand);
@@ -1626,6 +1586,9 @@
   var resultFocused = false;
   var confirmAgain = false;
   var handDirty = false;
+  var inboundMine = null;
+  var inboundOpp = null;
+  var dealView = null;
   var sendCount = 0;
   var busyButtons = {};
   var HISTORY_KEY = "fools-history:" + gameId;
@@ -1870,9 +1833,295 @@
     }
     return wait.then(function () {
       var previousTable = previous && previous.table ? previous.table : [];
+      var plan = planDeal(previous, next, clearKind === "take");
       state = next;
       if (clearSelection) selected.clear();
+      if (plan) {
+        inboundMine = plan.mine;
+        inboundOpp = plan.opp;
+        dealView = { deck: plan.deck, trump: plan.trumpStart && plan.deck > 0 };
+      }
       render(previousTable);
+      if (!plan) return;
+      return playDeal(plan);
+    });
+  }
+
+  function motionOk() {
+    return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function seatOrder(players) {
+    return (players || []).slice().sort(function (a, b) {
+      return a.seat_position - b.seat_position;
+    });
+  }
+
+  /** Attacker draws first. The beater or taker is moved to the end, matching the server. */
+  function refillOrder(players, startId, lastId) {
+    var circle = seatOrder(players);
+    var index = circle.findIndex(function (row) {
+      return String(row.user_id) === String(startId);
+    });
+    if (index < 0) index = 0;
+    var sequence = [];
+    for (var step = 0; step < circle.length; step++) {
+      sequence.push(circle[(index + step) % circle.length]);
+    }
+    if (lastId != null && String(lastId) !== String(startId)) {
+      var last = null;
+      sequence = sequence.filter(function (row) {
+        if (String(row.user_id) !== String(lastId)) return true;
+        last = row;
+        return false;
+      });
+      if (last) sequence.push(last);
+    }
+    return sequence;
+  }
+
+  function planDeal(previous, next, took) {
+    if (!motionOk() || !next || next.status !== "in_progress") return null;
+    var players = seatOrder(next.players);
+    var uid = uidStr();
+    var steps = [];
+    var opening = false;
+    if (!previous) {
+      var rt0 = next.runtime || {};
+      var fresh = rt0.phase === "between" && !(next.table || []).length && !(next.discard_count);
+      if (!fresh) return null;
+      try {
+        if (window.sessionStorage.getItem("fools-opening-deal:" + gameId) === "1") return null;
+      } catch (ignore) {}
+      opening = true;
+      var me0 = players.find(function (row) { return String(row.user_id) === uid; });
+      var mine0 = me0 && me0.hand ? me0.hand.slice() : [];
+      var at0 = 0;
+      players.forEach(function (row) {
+        var count = row.cards_remaining || 0;
+        for (var i = 0; i < count; i++) {
+          var card = null;
+          if (String(row.user_id) === uid) card = mine0[at0++] || null;
+          steps.push({ userId: String(row.user_id), card: card });
+        }
+      });
+    } else {
+      if ((next.deck_remaining || 0) >= (previous.deck_remaining || 0)) return null;
+      var prevRt = previous.runtime || {};
+      var tableN = 0;
+      if (took) {
+        (previous.table || []).forEach(function (row) {
+          tableN += 1;
+          if (row.defense) tableN += 1;
+        });
+      }
+      var taker = took ? String(prevRt.defender_id) : "";
+      var prevCount = {};
+      (previous.players || []).forEach(function (row) {
+        prevCount[String(row.user_id)] = row.cards_remaining || 0;
+      });
+      var drawnBy = {};
+      players.forEach(function (row) {
+        var id = String(row.user_id);
+        var before = prevCount[id] || 0;
+        if (id === taker) before += tableN;
+        var got = (row.cards_remaining || 0) - before;
+        drawnBy[id] = got > 0 ? got : 0;
+      });
+      var me1 = players.find(function (row) { return String(row.user_id) === uid; });
+      var freshMine = [];
+      if (me1 && me1.hand) {
+        var seen = {};
+        var prevMe = (previous.players || []).find(function (row) {
+          return String(row.user_id) === uid;
+        });
+        ((prevMe && prevMe.hand) || []).forEach(function (card) { seen[card.id] = true; });
+        var takenIds = {};
+        if (took && uid === taker) {
+          (previous.table || []).forEach(function (row) {
+            if (row.attack) takenIds[row.attack.id] = true;
+            if (row.defense) takenIds[row.defense.id] = true;
+          });
+        }
+        me1.hand.forEach(function (card) {
+          if (!seen[card.id] && !takenIds[card.id]) freshMine.push(card);
+        });
+      }
+      var at1 = 0;
+      refillOrder(players, prevRt.attacker_id, prevRt.defender_id).forEach(function (row) {
+        var id = String(row.user_id);
+        var n = drawnBy[id] || 0;
+        for (var i = 0; i < n; i++) {
+          var card = null;
+          if (id === uid) card = freshMine[at1++] || null;
+          steps.push({ userId: id, card: card });
+        }
+      });
+    }
+    if (!steps.length) return null;
+    var mine = {};
+    var opp = {};
+    steps.forEach(function (step) {
+      if (step.userId === uid && step.card) mine[step.card.id] = true;
+      else if (step.userId !== uid) opp[step.userId] = (opp[step.userId] || 0) + 1;
+    });
+    return {
+      steps: steps,
+      mine: mine,
+      opp: opp,
+      deck: (next.deck_remaining || 0) + steps.length,
+      trumpStart: previous ? !!previous.trump_in_deck : true,
+      opening: opening,
+    };
+  }
+
+  function deckRect() {
+    var stack = document.querySelector(".play-deck-stack");
+    var el = stack || document.getElementById("deck-trump-corner");
+    if (!el) return { left: 24, top: 24, width: 68, height: 96 };
+    var box = el.getBoundingClientRect();
+    if (!box.width) return { left: 24, top: 24, width: 68, height: 96 };
+    return box;
+  }
+
+  function dealTargetRect(userId, uid) {
+    if (String(userId) === String(uid)) {
+      var hand = document.getElementById("hand");
+      var mine = hand ? hand.getBoundingClientRect() : { left: 80, top: 400, width: 240, height: 160 };
+      return {
+        left: mine.left + Math.max(0, mine.width / 2 - 48),
+        top: mine.top + 16,
+        width: 96,
+        height: 134,
+      };
+    }
+    var opp = findOpponent(userId);
+    var backs = opp && opp.querySelector(".play-opponent__backs");
+    var box = (backs || opp) ? (backs || opp).getBoundingClientRect() : { left: 80, top: 40, width: 80, height: 56 };
+    return {
+      left: box.left + Math.max(0, box.width / 2 - 21),
+      top: box.top,
+      width: 42,
+      height: 58,
+    };
+  }
+
+  function launchFlyer(from, to, html) {
+    return new Promise(function (resolve) {
+      var node = document.createElement("div");
+      node.className = "play-deal-flyer";
+      node.innerHTML = html;
+      node.style.left = from.left + "px";
+      node.style.top = from.top + "px";
+      node.style.width = from.width + "px";
+      document.body.appendChild(node);
+      var dx = to.left - from.left;
+      var dy = to.top - from.top;
+      var scale = from.width ? to.width / from.width : 1;
+      var anim = node.animate([
+        { transform: "translate(0px, 0px) scale(1)" },
+        { transform: "translate(" + dx.toFixed(1) + "px, " + dy.toFixed(1) + "px) scale(" + scale.toFixed(3) + ")" },
+      ], { duration: 320, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)", fill: "forwards" });
+      function done() {
+        node.remove();
+        resolve();
+      }
+      anim.onfinish = done;
+      anim.oncancel = done;
+    });
+  }
+
+  function playDeal(plan) {
+    if (plan.opening) {
+      try { window.sessionStorage.setItem("fools-opening-deal:" + gameId, "1"); } catch (ignore) {}
+    }
+    var uid = uidStr();
+    var trumpSuit = state && state.trump_card ? state.trump_card.suit : null;
+    return new Promise(function (resolve) {
+      var left = plan.steps.length;
+      function finish() {
+        inboundMine = null;
+        inboundOpp = null;
+        dealView = null;
+        render(state.table || []);
+        resolve();
+      }
+      if (!left) {
+        finish();
+        return;
+      }
+      plan.steps.forEach(function (step, index) {
+        window.setTimeout(function () {
+          var from = deckRect();
+          var to = dealTargetRect(step.userId, uid);
+          var html = step.card ? cardSvgOuterHTML(step.card, {}) : cardBackSvgHTML(step.userId !== uid);
+          if (dealView) {
+            dealView.deck = Math.max(0, dealView.deck - 1);
+            dealView.trump = plan.trumpStart && dealView.deck > 0;
+            renderDeckTrumpCorner(state.trump_card, dealView.deck, dealView.trump);
+          }
+          launchFlyer(from, to, html).then(function () {
+            if (step.card && inboundMine) delete inboundMine[step.card.id];
+            else if (inboundOpp && inboundOpp[step.userId]) inboundOpp[step.userId] -= 1;
+            renderHand(uid, viewer(uid), (state && state.runtime) || {}, trumpSuit);
+            renderOpponents(uid, (state && state.runtime) || {});
+            if (step.card) {
+              var inner = document.querySelector(".play-hand-fan__inner");
+              var wrap = findByAttr(inner, "data-cid", step.card.id);
+              if (wrap) wrap.classList.add("is-just-dealt");
+            } else {
+              var opp = findOpponent(step.userId);
+              var backs = opp && opp.querySelector(".play-opponent__backs");
+              var last = backs && backs.lastElementChild;
+              if (last) last.classList.add("is-just-dealt");
+            }
+            left -= 1;
+            if (!left) finish();
+          });
+        }, index * 110);
+      });
+    });
+  }
+
+  function clearDropTargets() {
+    document.querySelectorAll(".is-drop-target, .is-drop-hover").forEach(function (el) {
+      el.classList.remove("is-drop-target", "is-drop-hover");
+    });
+  }
+
+  function markDropTargets(ids) {
+    clearDropTargets();
+    if (!ids || !ids.length || !state || state.status !== "in_progress") return;
+    var uid = uidStr();
+    var rt = state.runtime || {};
+    var me = viewer(uid);
+    var trumpSuit = state.trump_card ? state.trump_card.suit : null;
+    var cards = [];
+    ids.forEach(function (id) {
+      var card = me && me.hand && me.hand.find(function (item) { return item.id === id; });
+      if (card) cards.push(card);
+    });
+    if (cards.length !== ids.length) return;
+    var mat = document.getElementById("table-mat");
+    if (mat && attackSelectionFits(cards, uid, rt)) mat.classList.add("is-drop-target");
+    var wave = rt.phase === "build" || rt.phase === "defend";
+    var isDef = String(rt.defender_id) === String(uid);
+    if (!(wave && isDef && cards.length === 1)) return;
+    document.querySelectorAll(".play-table-pair--open").forEach(function (el) {
+      var row = (state.table || []).find(function (item) { return item.id === el.dataset.tableCardId; });
+      if (row && canBeatCard(cards[0], row.attack, trumpSuit)) el.classList.add("is-drop-target");
+    });
+  }
+
+  function watchDropHover(el) {
+    if (!el || el.dataset.dropHover === "1") return;
+    el.dataset.dropHover = "1";
+    el.addEventListener("dragenter", function () {
+      if (el.classList.contains("is-drop-target")) el.classList.add("is-drop-hover");
+    });
+    el.addEventListener("dragleave", function (ev) {
+      if (el.contains(ev.relatedTarget)) return;
+      el.classList.remove("is-drop-hover");
     });
   }
 
@@ -1888,6 +2137,7 @@
 
     var mat = document.getElementById("table-mat");
     if (mat) {
+      watchDropHover(mat);
       mat.ondragover = allowDrop;
       mat.ondrop = null;
       if (state.status === "in_progress" && canAddCards(uid, rt)) {

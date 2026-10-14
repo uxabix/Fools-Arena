@@ -603,3 +603,32 @@ def test_empty_hands_end_the_match_with_no_fool(durak_deck_36, user_factory):
     assert game.status == "finished"
     assert game.loser_id is None
     assert lobby.status == "waiting"
+
+
+@pytest.mark.django_db
+def test_defender_cannot_take_a_fully_beaten_table(durak_deck_36, user_factory):
+    """A defender who has beaten every card cannot pick the table up."""
+    attacker = user_factory(username="beat_a")
+    defender = user_factory(username="beat_b")
+    lobby = Lobby.objects.create(owner=attacker, name="no-take", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True, suit__name="Clubs").first()
+    attack = Card.objects.filter(rank__value=6, suit__name="Hearts", special_card__isnull=True).first()
+    defense = Card.objects.filter(rank__value=10, suit__name="Hearts", special_card__isnull=True).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_BUILD,
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=0)
+    TableCard.objects.create(fools=game, attack_card=attack, defense_card=defense)
+
+    with pytest.raises(GameError) as exc:
+        take_table(game, defender)
+    assert exc.value.code == "state"

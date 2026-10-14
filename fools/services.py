@@ -889,7 +889,7 @@ def start_game(lobby: Lobby, user: User) -> Game:
 
     trump_card = Card.objects.get(id=trump_id)
     for gp in _player_circle(game):
-        for _ in range(6):
+        for dealt in range(6):
             entry = GameDeck.get_top_card(game)
             if not entry:
                 break
@@ -899,7 +899,7 @@ def start_game(lobby: Lobby, user: User) -> Game:
                 fools=game,
                 player=gp.user,
                 card=c,
-                order_in_hand=None,
+                order_in_hand=dealt + 1,
             )
     _refresh_card_counts(game)
 
@@ -1458,6 +1458,8 @@ def take_table(game: Game, user: User):
         raise GameError("Not defense phase", "phase")
     if not TableCard.objects.filter(fools=game).exists():
         raise GameError("Table empty", "state")
+    if _all_defended(game):
+        raise GameError("All cards are already beaten", "state")
 
     _announce_action(game, user, "take")
     _save_rs(game, phase=PHASE_TAKING, passed_ids=[])

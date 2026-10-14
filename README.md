@@ -137,5 +137,9 @@ See [ROADMAP.md](./ROADMAP.md) for the roadmap.
 
 ---
 
+## Card artwork
+
+The card faces and the red card back are SVG files from the Wikimedia Commons category [Public domain playing cards](https://commons.wikimedia.org/wiki/Category:Public_domain_playing_cards). They are dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). The faces were uploaded by [AustinGabriel64](https://commons.wikimedia.org/wiki/User:AustinGabriel64). The back is [Card back red.svg](https://commons.wikimedia.org/wiki/File:Card_back_red.svg), from a public-domain design by [Trocche100](https://commons.wikimedia.org/wiki/User:Trocche100). Copies are stored in `fools/static/fools/cards/`. The jokers from that set are not used.
+
 ## ⚖️ License
-No license yet. **All rights reserved by the authors.**
+No license yet. **All rights reserved by the authors.** The card artwork above is an exception: those files are CC0.

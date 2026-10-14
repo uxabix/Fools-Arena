@@ -72,8 +72,8 @@
         </button>
       </aside>
       <div class="play-hand-tools">
-        <button type="button" id="btn-sort" class="game-btn game-btn--secondary play-sort-btn" aria-label="Hand is sorted by rank. Switch to suit.">
-          Sort: rank
+        <button type="button" id="btn-sort" class="game-btn game-btn--secondary play-sort-btn" aria-label="Hand is sorted by suit with trump on the left. Switch to suit with trump on the right.">
+          Suit · trump left
         </button>
       </div>
       <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
@@ -107,5 +107,8 @@
     </div>
   </dialog>
 </div>
+<script>
+  window.FOOLS_CARD_BASE = "{% static 'fools/cards/ace-hearts.svg' %}".replace(/ace-hearts\.svg$/, "");
+</script>
 <script src="{% static 'fools/js/play_table.js' %}?v={{ asset_js_v }}"></script>
 {% endblock %}
