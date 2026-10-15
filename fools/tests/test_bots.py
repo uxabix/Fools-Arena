@@ -70,6 +70,23 @@ class TestLowestCardStrategy:
         )
         assert action.card_id == beater.id
 
+    def test_throws_a_card_matching_the_beaten_rank(self):
+        """A throw may match the defense card. An open row has no defense."""
+        attack = _card(6)
+        beaten = _card(10)
+        cover = _card(11)
+        matching = _card(11)
+        other = _card(7)
+        open_row = TableRow(id=uuid4(), attack=attack, defended=False)
+        beaten_row = TableRow(
+            id=uuid4(), attack=beaten, defended=True, defense=cover
+        )
+        action = LowestCardStrategy().choose(
+            _state("throw", [other, matching], [open_row, beaten_row])
+        )
+        assert isinstance(action, PlayCards)
+        assert action.card_ids == (matching.id,)
+
     def test_takes_when_nothing_beats_the_attack(self):
         """No legal cover and no transfer means the bot picks the table up."""
         attack = _card(14, trump=True)
@@ -155,6 +172,72 @@ def test_bot_does_not_end_the_wave_while_a_person_can_throw(durak_deck_36, user_
 
     state = build_bot_state(game)
     assert state is None
+
+
+@pytest.mark.django_db
+def test_bot_throws_the_defense_rank_while_a_row_is_open(durak_deck_36, user_factory):
+    """Taking still offers a throw on a beaten rank, and an open row stays empty."""
+    from fools.models import PlayerHand, TableCard
+    from fools.services import PHASE_TAKING
+
+    attacker = user_factory(username="throw_bot", is_bot=True)
+    defender = user_factory(username="throw_human")
+    lobby = Lobby.objects.create(owner=defender, name="throw-rank", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.get(
+        special_card__isnull=True, rank__value=14, suit__name="Hearts"
+    )
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_TAKING,
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+            "passed_ids": [],
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    six_clubs = Card.objects.get(
+        special_card__isnull=True, rank__value=6, suit__name="Clubs"
+    )
+    six_spades = Card.objects.get(
+        special_card__isnull=True, rank__value=6, suit__name="Spades"
+    )
+    ten_diamonds = Card.objects.get(
+        special_card__isnull=True, rank__value=10, suit__name="Diamonds"
+    )
+    ten_clubs = Card.objects.get(
+        special_card__isnull=True, rank__value=10, suit__name="Clubs"
+    )
+    filler = list(
+        Card.objects.filter(special_card__isnull=True, rank__value=9).exclude(
+            suit__name="Hearts"
+        )[:2]
+    )
+    TableCard.objects.create(fools=game, attack_card=six_clubs)
+    TableCard.objects.create(
+        fools=game, attack_card=six_spades, defense_card=ten_diamonds
+    )
+    PlayerHand.objects.create(fools=game, player=attacker, card=ten_clubs, order_in_hand=1)
+    for index, card in enumerate(filler):
+        PlayerHand.objects.create(
+            fools=game, player=defender, card=card, order_in_hand=index + 1
+        )
+
+    state = build_bot_state(game)
+    assert state is not None
+    assert state.role == "throw"
+    defenses = [row.defense for row in state.table]
+    assert sum(card is None for card in defenses) == 1
+    beaten = next(card for card in defenses if card is not None)
+    assert beaten.id == ten_diamonds.id
+    assert beaten.rank == 10
+    action = LowestCardStrategy().choose(state)
+    assert isinstance(action, PlayCards)
+    assert action.card_ids == (ten_clubs.id,)
 
 
 @pytest.mark.django_db

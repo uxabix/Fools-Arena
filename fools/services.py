@@ -219,7 +219,7 @@ def _refresh_card_counts(game: Game):
 
 
 def _player_circle(game: Game) -> list[GamePlayer]:
-    return list(game.players.order_by("seat_position"))
+    return list(game.players.select_related("user").order_by("seat_position"))
 
 
 def _neighbor_user_ids(game: Game, defender_id: UUID) -> set[UUID]:
@@ -696,6 +696,7 @@ def create_lobby(
     allow_jokers: bool = False,
     fill_with_bots: bool = False,
     turn_time_limit: int | None = None,
+    share_hand_signals: bool = True,
 ) -> Lobby:
     """Create a lobby, default :class:`~fools.models.LobbySettings`, and owner seat.
 
@@ -711,6 +712,8 @@ def create_lobby(
         allow_jokers: Whether jokers may appear in the shoe (requires data).
         fill_with_bots: Seat bots in empty chairs when the game starts.
         turn_time_limit: Optional per-turn cap in seconds.
+        share_hand_signals: Other seats may see lifted cards and a reorder,
+            never the faces.
 
     Returns:
         The newly created :class:`~fools.models.Lobby` instance.
@@ -743,6 +746,7 @@ def create_lobby(
         allow_jokers=allow_jokers,
         fill_with_bots=fill_with_bots,
         turn_time_limit=turn_time_limit,
+        share_hand_signals=share_hand_signals,
     )
     LobbyPlayer.objects.create(lobby=lobby, user=owner, status="waiting")
     get_lobby_chat(lobby)
@@ -1053,6 +1057,7 @@ def serialize_lobby(lobby: Lobby) -> dict:
             "neighbor_throw_only": settings.neighbor_throw_only,
             "allow_jokers": settings.allow_jokers,
             "fill_with_bots": settings.fill_with_bots,
+            "share_hand_signals": settings.share_hand_signals,
             "turn_time_limit": settings.turn_time_limit,
         },
         "players": [
@@ -1116,6 +1121,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
             {
                 "user_id": str(gp.user_id),
                 "username": gp.user.username,
+                "avatar_url": gp.user.avatar_url or "",
                 "seat_position": gp.seat_position,
                 "cards_remaining": gp.cards_remaining,
                 "hand": hand,
@@ -1131,6 +1137,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
         "status": game.status,
         "transferable": bool(game.lobby.settings.is_transferable),
         "neighbor_throw_only": bool(game.lobby.settings.neighbor_throw_only),
+        "share_hand_signals": bool(game.lobby.settings.share_hand_signals),
         "trump_card": _card_json(trump),
         "trump_in_deck": trump_in_deck,
         "deck_remaining": deck_left,
@@ -1367,7 +1374,10 @@ def transfer_attack(game: Game, user: User, card_ids: list[UUID]):
 
     Allowed only when the lobby is transferable, every attack on the table
     shares one rank, nothing has been beaten yet, and the next player holds
-    enough cards for the pile after the pass. The original attacker stays.
+    enough cards for the pile after the pass. With three or more seats the
+    original attacker stays. With two seats the next player is that attacker,
+    so the passing player becomes the attacker and the former attacker defends.
+    One seat is never both.
 
     Args:
         game: Active game.
@@ -1419,7 +1429,10 @@ def transfer_attack(game: Game, user: User, card_ids: list[UUID]):
         ph.remove_from_hand()
         table_card = TableCard.objects.create(fools=game, attack_card=card)
         Move.objects.create(turn=turn, table_card=table_card, action_type="attack")
-    _save_rs(game, defender_id=str(nxt.user_id), phase=PHASE_BUILD)
+    updates = {"defender_id": str(nxt.user_id), "phase": PHASE_BUILD}
+    if nxt.user_id == UUID(rs["attacker_id"]):
+        updates["attacker_id"] = str(user.id)
+    _save_rs(game, **updates)
     _refresh_card_counts(game)
     broadcast_game(game.id, "game_update", {})
 

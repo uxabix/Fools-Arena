@@ -212,6 +212,7 @@
     if (settings.is_transferable) parts.push("Transfer");
     if (settings.fill_with_bots) parts.push("Bots");
     if (settings.allow_jokers) parts.push("Jokers");
+    if (settings.share_hand_signals === false) parts.push("No hand signals");
     return parts.join(" · ");
   }
 
@@ -520,6 +521,7 @@
       neighbor_throw_only: document.getElementById("id_neighbor_throw_only").checked,
       is_transferable: document.getElementById("id_is_transferable").checked,
       fill_with_bots: document.getElementById("id_fill_with_bots").checked,
+      share_hand_signals: document.getElementById("id_share_hand_signals").checked,
     };
     if (privateBox.checked) body.password = passwordInput.value;
     try {

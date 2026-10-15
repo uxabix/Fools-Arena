@@ -851,8 +851,33 @@
 }
 
 @media (min-width: 900px) {
+  .play-page--classic .play-classic-bar {
+    margin-bottom: 0.4rem;
+  }
+
+  .play-page--classic .play-statusbar {
+    min-height: 1.45em;
+  }
+
+  .play-page--classic .play-classic-layout {
+    gap: 0.35rem;
+  }
+
+  .play-ring {
+    position: relative;
+  }
+
+  /* The ring already says who sits where. Keep the sentence for screen readers only. */
   .play-seat-order {
-    display: block;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .play-page--classic .play-opponents {
@@ -869,7 +894,7 @@
   .play-ring__main {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.5rem;
     min-width: 0;
   }
 
@@ -890,7 +915,10 @@
 
   .play-seat-bin--north {
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    justify-content: space-evenly;
+    align-items: flex-start;
+    width: 100%;
   }
 
   .play-seat-bin .play-opponent {
@@ -898,10 +926,80 @@
     width: 100%;
   }
 
-  .play-seat-bin--north .play-opponent {
-    width: 11.5rem;
+  .play-page--classic .play-seat-bin--north .play-opponent {
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    width: auto;
     min-width: 0;
-    max-width: 100%;
+    max-width: 14rem;
+  }
+
+  .play-page--classic .play-my-area {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    column-gap: 0.75rem;
+    row-gap: 0.15rem;
+    align-items: center;
+    margin-top: 0;
+  }
+
+  .play-page--classic .play-my-head {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  .play-page--classic .play-my-role {
+    margin-bottom: 0;
+  }
+
+  .play-page--classic .play-my-duty {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+  }
+
+  .play-page--classic .play-side-actions {
+    grid-column: 4;
+    grid-row: 1;
+    margin: 0;
+    align-self: center;
+  }
+
+  .play-page--classic .play-hand-tools {
+    grid-column: 5;
+    grid-row: 1;
+    margin: 0;
+  }
+
+  .play-page--classic .play-hint {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+    padding: 0 7rem 0 0;
+    min-height: 1.4em;
+  }
+
+  .play-page--classic .play-sending {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: end;
+    align-self: center;
+    margin: 0;
+    min-height: 0;
+  }
+
+  .play-page--classic .play-hand-fan {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .play-page--classic .play-hand-help {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    margin: 0;
   }
 
   .play-ring[data-seats="0"] .play-ring__body,
@@ -947,9 +1045,14 @@
 }
 
 .play-page--classic .play-opponent__name {
+  max-width: 6.5rem;
   font-weight: 700;
   font-size: 1rem;
   color: var(--game-text);
+}
+
+.play-page--classic .play-opponent__meta:empty {
+  display: none;
 }
 
 .play-page--classic .play-opponent,
@@ -1047,13 +1150,13 @@
 }
 
 .play-role--attack {
-  background: rgba(240, 213, 106, 0.2);
-  color: #f0d56a;
+  background: #e10600;
+  color: #fff;
 }
 
 .play-role--defend {
-  background: rgba(142, 180, 255, 0.18);
-  color: #c5d7ff;
+  background: #1565e0;
+  color: #fff;
 }
 
 .play-role--throw,
@@ -1064,9 +1167,7 @@
 }
 
 .play-seat-mark {
-  width: 1.35rem;
-  height: 1.35rem;
-  color: #d7dce3;
+  display: none;
 }
 
 .play-seat-mark svg {
@@ -1345,20 +1446,166 @@
   visibility: hidden;
 }
 
+.play-page--classic .play-opponent__info {
+  position: relative;
+  z-index: 2;
+}
+
+.play-opponent__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  gap: 0.12rem;
+}
+
+.play-opponent__portrait {
+  position: relative;
+  width: 2.7rem;
+  height: 2.7rem;
+  flex: none;
+}
+
+.play-opponent__avatar {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(240, 213, 106, 0.16);
+  color: #f0d56a;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.play-opponent__avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.play-page--classic .play-opponent .play-role {
+  position: absolute;
+  left: 64%;
+  top: 64%;
+  z-index: 2;
+  width: 42%;
+  height: 42%;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #121820;
+  justify-content: center;
+}
+
+.play-page--classic .play-opponent .play-role.is-empty {
+  display: none;
+}
+
+.play-page--classic .play-opponent .play-role > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.play-page--classic .play-opponent .play-role--attack,
+.play-page--classic .play-opponent .play-role--defend {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+}
+
+.play-page--classic .play-opponent .play-role svg {
+  width: 62%;
+  height: 62%;
+  stroke-width: 2.6;
+}
+
+.play-page--classic .play-opponent__duty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .play-page--classic .play-opponent__backs {
   display: flex;
   flex-direction: row;
-  align-items: flex-end;
-  height: 56px;
-  padding-left: 16px;
+  align-items: flex-start;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  height: auto;
+  margin-top: -18px;
+  padding: 0 2px;
 }
 
 .play-page--classic .play-opponent__back {
-  margin-left: -22px;
+  margin-left: -26px;
   line-height: 0;
   position: relative;
   z-index: calc(1 + var(--i, 0));
+  transform-origin: 50% 0%;
+  transform: translateY(calc(var(--fan-y, 0px) + var(--fan-lift, 0px)))
+    rotate(var(--fan-rot, 0deg))
+    scale(var(--fan-scale, 1));
   filter: drop-shadow(-1px 2px 3px rgba(0, 0, 0, 0.45));
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.play-page--classic .play-opponent__back.is-lifted {
+  --fan-lift: -12px;
+  --fan-scale: 1.28;
+  z-index: 30;
+  filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.55));
+}
+
+.play-page--classic .play-opponent__backs.is-shuffling .play-opponent__back {
+  animation: play-opp-shuffle 0.42s ease both;
+  animation-delay: calc(var(--i, 0) * 12ms);
+}
+
+@keyframes play-opp-shuffle {
+  0%,
+  100% {
+    transform: translateY(calc(var(--fan-y, 0px) + var(--fan-lift, 0px)))
+      rotate(var(--fan-rot, 0deg))
+      scale(var(--fan-scale, 1));
+  }
+
+  40% {
+    transform: translateY(calc(var(--fan-y, 0px) + var(--fan-lift, 0px) - 16px))
+      rotate(calc(var(--fan-rot, 0deg) * -0.45))
+      scale(calc(var(--fan-scale, 1) * 1.05));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-page--classic .play-opponent__back {
+    transition: none;
+  }
+
+  .play-page--classic .play-opponent__backs.is-shuffling {
+    outline: 2px solid rgba(255, 255, 255, 0.9);
+    outline-offset: 3px;
+  }
+
+  .play-page--classic .play-opponent__backs.is-shuffling .play-opponent__back {
+    animation: none;
+  }
 }
 
 .play-page--classic .play-opponent__back:first-child {
@@ -1366,9 +1613,46 @@
 }
 
 .play-page--classic .play-opponent__back .play-card-svg {
-  width: 42px;
+  width: 32px;
   height: auto;
   display: block;
+}
+
+/* Wide seats: a larger fan, aimed at the felt. Top opens downward; sides turn inward. */
+@media (min-width: 900px) {
+  .play-page--classic .play-opponent__back {
+    margin-left: -40px;
+  }
+
+  .play-page--classic .play-opponent__back .play-card-svg {
+    width: 52px;
+  }
+
+  .play-page--classic .play-opponent__backs {
+    margin-top: -18px;
+  }
+
+  #seat-west .play-opponent__backs,
+  #seat-east .play-opponent__backs {
+    position: absolute;
+    top: 1.35rem;
+    right: auto;
+    width: max-content;
+    height: auto;
+    margin: 0;
+    transform-origin: center center;
+  }
+
+  /* Middle of the fan stays level with the avatar, clear of it, open toward the felt. */
+  #seat-west .play-opponent__backs {
+    left: calc(50% + 4.9rem);
+    transform: translate(-50%, -50%) rotate(-90deg);
+  }
+
+  #seat-east .play-opponent__backs {
+    left: calc(50% - 4.9rem);
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
 }
 
 .play-page--classic .play-felt {
@@ -1740,21 +2024,21 @@
 
 @media (max-width: 720px) {
   .play-page--classic .play-statusbar {
-    min-height: 4.35em;
+    min-height: 0;
   }
 
   .play-page--classic .play-hint {
-    min-height: 4.2em;
+    min-height: 1.3em;
   }
 
   .play-page--classic .play-side-actions {
-    /* Two stacked actions; one visible button must not shrink the row. */
-    min-height: calc(2.75rem * 2 + 0.55rem);
+    min-height: 2.25rem;
   }
 
   .play-page--classic .play-action-btn {
-    flex-basis: 100%;
+    flex: 1 1 0;
     max-width: none;
+    min-width: 0;
   }
 }
 
@@ -1833,6 +2117,34 @@
   color: var(--game-muted);
 }
 
+@media (min-width: 900px) {
+  .play-page--classic .play-opponent__name {
+    font-size: 1.15rem;
+  }
+
+  .play-page--classic .play-my-area {
+    margin-top: 0;
+  }
+
+  .play-page--classic .play-my-role {
+    margin-bottom: 0;
+  }
+
+  .play-page--classic .play-side-actions {
+    margin: 0;
+  }
+
+  .play-page--classic .play-hint {
+    margin: 0;
+    padding: 0 7rem 0 0;
+    min-height: 1.4em;
+  }
+
+  .play-page--classic .play-hand-help {
+    margin: 0;
+  }
+}
+
 .play-page--classic .play-hand-fan {
   display: block;
   height: 13.5rem;
@@ -1857,7 +2169,7 @@
   justify-content: center;
   -webkit-box-align: end;
   align-items: flex-end;
-  padding: 1.25rem 2.75rem 1.1rem;
+  padding: 2rem 2.75rem 1.1rem;
   min-width: -webkit-min-content;
   min-width: min-content;
   margin: 0 auto;
@@ -1916,12 +2228,38 @@
 }
 
 .play-page--classic .play-card--hand.is-selected {
-  z-index: 40;
+  z-index: 80;
   -webkit-transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 22px))
-    rotate(var(--fan-rot, 0deg));
+    rotate(var(--fan-rot, 0deg)) scale(1.12);
   transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 22px))
-    rotate(var(--fan-rot, 0deg));
+    rotate(var(--fan-rot, 0deg)) scale(1.12);
   box-shadow: 0 16px 28px rgba(0, 0, 0, 0.55);
+}
+
+/* Wide screens: the same arc as the phone hand, tall enough that the rise is visible. */
+@media (min-width: 900px) {
+  .play-page--classic .play-hand-fan {
+    height: 16rem;
+  }
+
+  .play-page--classic .play-hand-fan__inner {
+    padding-top: 2.4rem;
+    padding-bottom: 3rem;
+  }
+
+  .play-page--classic .play-card--hand {
+    -webkit-transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) * 2.5))
+      rotate(var(--fan-rot, 0deg));
+    transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) * 2.5))
+      rotate(var(--fan-rot, 0deg));
+  }
+
+  .play-page--classic .play-card--hand.is-selected {
+    -webkit-transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) * 2.5 - 22px))
+      rotate(var(--fan-rot, 0deg)) scale(1.12);
+    transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) * 2.5 - 22px))
+      rotate(var(--fan-rot, 0deg)) scale(1.12);
+  }
 }
 
 .play-page--classic .play-card--hand:focus-visible,
@@ -3136,5 +3474,593 @@ body.game-skin {
 @media (max-width: 380px) {
   .game-panel--auth {
     padding: 1rem 0.85rem;
+  }
+}
+
+.play-chat-toggle {
+  display: none;
+}
+
+/* Phone table: fit a 393×852 screen with no scrolling at all. */
+@media (max-width: 899px) {
+  body.play-screen {
+    overflow-x: hidden;
+  }
+
+  body.play-screen .site-shell {
+    max-width: none;
+    min-height: 100dvh;
+    height: auto;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  body.play-screen .site-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body.play-screen .play-page--classic {
+    flex: 1;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    padding: 0.35rem 0 calc(0.75rem + env(safe-area-inset-bottom));
+    font-size: 1rem;
+  }
+
+  body.play-screen .play-classic-bar {
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    margin-bottom: 0.25rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body.play-screen .play-classic-bar .game-back,
+  body.play-screen .play-leave,
+  body.play-screen .play-chat-toggle {
+    flex: none;
+    min-height: 2rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.78rem;
+  }
+
+  body.play-screen .play-statusbar,
+  body.play-screen #play-my-role,
+  body.play-screen .play-opponents__order,
+  body.play-screen .play-seat-order {
+    display: none !important;
+  }
+
+  body.play-screen .play-chat-toggle {
+    display: inline-flex;
+  }
+
+  body.play-screen .play-classic-layout {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    max-width: 100%;
+    gap: 0.35rem;
+    overflow: visible;
+  }
+
+  body.play-screen .play-ring {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body.play-screen .play-opponents {
+    flex: none;
+    padding: 0.35rem 0;
+    gap: 0;
+    border-radius: 0;
+  }
+
+  body.play-screen .play-opponents__row {
+    overflow: hidden !important;
+    flex-wrap: nowrap;
+    gap: 0.2rem;
+    max-width: 100%;
+  }
+
+  body.play-screen .play-opponent {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    gap: 0.1rem;
+  }
+
+  body.play-screen .play-opponent__backs {
+    height: auto;
+    max-width: 100%;
+    margin-top: -16px;
+    padding: 0;
+    overflow: visible;
+    justify-content: center;
+  }
+
+  body.play-screen .play-opponent__back {
+    margin-left: -24px;
+  }
+
+  body.play-screen .play-opponent__back .play-card-svg {
+    width: 28px;
+  }
+
+  body.play-screen .play-opponent__portrait {
+    width: 2.15rem;
+    height: 2.15rem;
+  }
+
+  body.play-screen .play-opponent__avatar {
+    font-size: 0.8rem;
+  }
+
+  body.play-screen .play-opponent__name {
+    font-size: 0.95rem;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  body.play-screen .play-opponent__meta,
+  body.play-screen .play-opponent__duty {
+    font-size: 0.8rem;
+  }
+
+  body.play-screen .play-ring__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  body.play-screen .play-ring__main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body.play-screen .play-felt {
+    flex: none;
+    min-width: 0;
+    min-height: 16rem;
+    display: flex;
+    flex-direction: column;
+    padding: 0.35rem 0;
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  body.play-screen .play-felt__inner {
+    position: relative;
+    display: block;
+    flex: none;
+    min-height: 16rem;
+  }
+
+  body.play-screen .play-piles {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: auto;
+    height: auto;
+    display: block;
+    pointer-events: none;
+  }
+
+  body.play-screen .play-deck-trump,
+  body.play-screen .play-discard {
+    position: absolute;
+    top: 50%;
+    width: 7.2rem;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  body.play-screen .play-deck-trump {
+    left: 0;
+    transform: translate(-50%, -50%);
+  }
+
+  body.play-screen .play-discard {
+    right: 0;
+    left: auto;
+    transform: translate(50%, -50%);
+  }
+
+  body.play-screen .play-pile__label,
+  body.play-screen .play-discard__label,
+  body.play-screen .play-discard__empty {
+    display: none;
+  }
+
+  body.play-screen .play-deck-trump-pile {
+    width: 6.6rem;
+    height: 5.6rem;
+  }
+
+  body.play-screen .play-deck-stack {
+    width: 3.4rem;
+    height: 4.6rem;
+    left: 1.6rem;
+  }
+
+  body.play-screen .play-deck-stack--empty {
+    left: auto;
+    right: 0.2rem;
+    box-sizing: border-box;
+    width: 3rem;
+    height: auto;
+    min-width: 0;
+    padding: 0.3rem 0.2rem;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+  }
+
+  body.play-screen .play-deck-stack__layer .play-card-svg,
+  body.play-screen .play-discard__back .play-card-svg,
+  body.play-screen .play-discard__top .play-card-svg {
+    width: 52px;
+  }
+
+  body.play-screen .play-trump-card--under-deck .play-card-svg {
+    width: 3.1rem;
+  }
+
+  body.play-screen .play-trump-card--under-deck {
+    left: 2.85rem;
+  }
+
+  body.play-screen .play-discard__count {
+    right: auto;
+    left: 0;
+    bottom: 0.1rem;
+  }
+
+  body.play-screen .play-discard__stack {
+    width: 3.6rem;
+    height: 4.8rem;
+    margin: 0 auto;
+  }
+
+  body.play-screen .play-felt-center {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    flex: none;
+    height: auto !important;
+    min-height: 16rem;
+    padding: 0.5rem 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    overflow: visible !important;
+  }
+
+  body.play-screen .play-table-grid {
+    max-width: 100%;
+    gap: 0.35rem;
+  }
+
+  body.play-screen .play-table-stack {
+    width: 4.2rem;
+    min-height: 6rem;
+  }
+
+  body.play-screen .play-card--table .play-card-svg {
+    width: 64px;
+  }
+
+  body.play-screen .play-card--placeholder {
+    min-width: 64px;
+    min-height: 90px;
+  }
+
+  body.play-screen .play-my-area {
+    flex: none;
+    min-width: 0;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    column-gap: 0.35rem;
+    row-gap: 0.15rem;
+    align-items: center;
+    margin: 0;
+  }
+
+  body.play-screen .play-my-head {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  body.play-screen .play-my-duty {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+    font-size: 0.78rem;
+  }
+
+  body.play-screen .play-hand-tools {
+    grid-column: 4;
+    grid-row: 1;
+    margin: 0;
+  }
+
+  body.play-screen .play-sort-btn {
+    min-height: 2rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.72rem;
+  }
+
+  body.play-screen .play-hint {
+    display: none !important;
+  }
+
+  body.play-screen .play-sending {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: end;
+    margin: 0;
+    min-height: 0;
+    font-size: 0.78rem;
+  }
+
+  body.play-screen .play-side-actions {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    z-index: 6;
+    width: max-content;
+    max-width: calc(100% - 0.8rem);
+    grid-column: auto;
+    grid-row: auto;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 0.35rem;
+    margin: 0;
+    min-height: 0;
+    transform: translate(-50%, calc(-100% - 1.35rem));
+  }
+
+  body.play-screen .play-action-btn {
+    flex: none;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    min-height: 0;
+    padding: 0.28rem 0.6rem;
+    font-size: 0.75rem;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  body.play-screen .play-hand-fan {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    height: auto;
+    min-height: 9.5rem;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible !important;
+    border-width: 0;
+    border-radius: 0;
+    padding: 0.2rem 0;
+  }
+
+  body.play-screen .play-hand-fan__inner {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100%;
+    /* Side inset is the room the outer rotated corners need. JS sets it per hand. */
+    padding: 0.45rem var(--hand-inset, 0.5rem) 0.3rem;
+    box-sizing: border-box;
+  }
+
+  body.play-screen .play-card--hand {
+    flex: 0 0 var(--hand-card-w, 4.5rem) !important;
+    width: var(--hand-card-w, 4.5rem) !important;
+    max-width: var(--hand-card-w, 4.5rem);
+    min-width: 0 !important;
+    margin-left: var(--hand-overlap, -0.5rem);
+    margin-right: 0;
+  }
+
+  body.play-screen .play-card--hand:first-child {
+    margin-left: 0;
+  }
+
+  body.play-screen .play-card--hand .play-card-svg {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  body.play-screen .play-card--hand.is-selected {
+    z-index: 80;
+    transform: translateX(var(--fan-x, 0px)) translateY(calc(var(--fan-y, 0px) - 10px))
+      rotate(var(--fan-rot, 0deg)) scale(1.12);
+  }
+
+  body.play-screen .play-hand-help,
+  body.play-screen .play-history {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  body.play-screen .play-page--classic .play-chat {
+    position: fixed;
+    z-index: 80;
+    left: 0.4rem;
+    right: 0.4rem;
+    bottom: calc(0.4rem + env(safe-area-inset-bottom));
+    max-height: min(48dvh, 24rem);
+    margin: 0;
+    padding: 0.75rem 0.8rem;
+    overflow: auto;
+    background: rgba(15, 20, 28, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+
+  body.play-screen .play-chat:not(.is-open) {
+    display: none !important;
+  }
+
+  body.play-screen .play-chat .game-subtitle {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+  }
+
+  body.play-screen .play-chat .game-chat-log {
+    max-height: 28dvh;
+  }
+
+  body.play-screen .play-chat .game-chat-form {
+    flex-wrap: nowrap;
+  }
+
+  body.play-screen .play-chat .game-chat-form input[type="text"] {
+    min-width: 0;
+    width: auto;
+  }
+}
+
+.site-nav-toggle {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  html.play-screen,
+  html.play-screen body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    height: auto;
+    max-height: none;
+  }
+
+  .site-header {
+    position: relative;
+    flex-wrap: nowrap;
+    border-radius: 0;
+    margin: 0;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .site-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+    min-height: 2.75rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--game-border);
+    border-radius: 999px;
+    background: var(--game-bg);
+    color: var(--game-text);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .site-nav-toggle__icon,
+  .site-nav-toggle__icon::before,
+  .site-nav-toggle__icon::after {
+    display: block;
+    width: 1rem;
+    height: 2px;
+    background: currentColor;
+    border-radius: 1px;
+  }
+
+  .site-nav-toggle__icon {
+    position: relative;
+  }
+
+  .site-nav-toggle__icon::before,
+  .site-nav-toggle__icon::after {
+    content: "";
+    position: absolute;
+    left: 0;
+  }
+
+  .site-nav-toggle__icon::before { top: -5px; }
+  .site-nav-toggle__icon::after { top: 5px; }
+
+  .site-nav {
+    display: none;
+    position: absolute;
+    z-index: 140;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 0.45rem;
+    background: #1e2a3d;
+    border-bottom: 1px solid var(--game-border);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+  }
+
+  .site-header.is-open .site-nav {
+    display: block;
+  }
+
+  .site-nav__track {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    border-radius: var(--game-radius-sm);
+  }
+
+  .site-nav__link {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .play-page--classic .play-opponents,
+  .play-page--classic .play-opponents__row {
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+  }
+
+  .play-page--classic .play-hand-fan {
+    overflow: visible !important;
+  }
+
+  .play-page--classic .play-hand-fan__inner {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .play-page--classic .play-opponent {
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
   }
 }

@@ -15,7 +15,11 @@
                 <span class="site-brand__mark" aria-hidden="true">♠</span>
                 <span class="site-brand__text">Fools Arena</span>
             </a>
-            <nav class="site-nav" aria-label="Main navigation">
+            <button type="button" id="site-nav-toggle" class="site-nav-toggle" aria-expanded="false" aria-controls="site-nav">
+                <span class="site-nav-toggle__icon" aria-hidden="true"></span>
+                Menu
+            </button>
+            <nav id="site-nav" class="site-nav" aria-label="Main navigation">
                 <div class="site-nav__track">
                     {% if user.is_authenticated %}
                     <a href="{% url 'fools-lobby-list-page' %}"
@@ -51,5 +55,25 @@
         </footer>
     </div>
     {% block extra_js %}{% endblock %}
+    <script>
+      (function () {
+        var button = document.getElementById("site-nav-toggle");
+        var header = document.querySelector(".site-header");
+        if (!button || !header) return;
+        function setOpen(open) {
+          header.classList.toggle("is-open", open);
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+        button.addEventListener("click", function () {
+          setOpen(!header.classList.contains("is-open"));
+        });
+        header.addEventListener("keydown", function (ev) {
+          if (ev.key === "Escape") setOpen(false);
+        });
+        header.querySelectorAll(".site-nav__link").forEach(function (link) {
+          link.addEventListener("click", function () { setOpen(false); });
+        });
+      })();
+    </script>
 </body>
 </html>

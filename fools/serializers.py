@@ -49,6 +49,7 @@ class LobbyCreateSerializer(serializers.Serializer):
     is_transferable = serializers.BooleanField(default=False)
     neighbor_throw_only = serializers.BooleanField(default=False)
     fill_with_bots = serializers.BooleanField(default=False)
+    share_hand_signals = serializers.BooleanField(default=True)
     allow_jokers = serializers.BooleanField(default=False)
     turn_time_limit = serializers.IntegerField(
         required=False, allow_null=True, min_value=0

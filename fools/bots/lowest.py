@@ -70,6 +70,9 @@ class LowestCardStrategy(BotStrategy):
 
     def _throw(self, state: BotState):
         ranks = {row.attack.rank for row in state.table}
+        ranks.update(
+            row.defense.rank for row in state.table if row.defense is not None
+        )
         matches = [
             card for card in state.hand if card.rank in ranks and not card.is_trump
         ]

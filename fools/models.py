@@ -155,6 +155,7 @@ class LobbySettings(models.Model):
     neighbor_throw_only = models.BooleanField(default=False)
     allow_jokers = models.BooleanField(default=False)
     fill_with_bots = models.BooleanField(default=False)
+    share_hand_signals = models.BooleanField(default=True)
     turn_time_limit = models.IntegerField(null=True, blank=True)
     special_rule_set = models.ForeignKey('SpecialRuleSet', on_delete=models.SET_NULL, null=True, blank=True)
 

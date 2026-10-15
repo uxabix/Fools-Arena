@@ -525,6 +525,7 @@ class LobbySettingsAdmin(admin.ModelAdmin):
         'is_transferable',
         'neighbor_throw_only',
         'allow_jokers',
+        'share_hand_signals',
         ('special_rule_set', admin.RelatedOnlyFieldListFilter),
     )
 
@@ -546,7 +547,12 @@ class LobbySettingsAdmin(admin.ModelAdmin):
             'description': 'Core fools configuration parameters.'
         }),
         ('Game Rules', {
-            'fields': ('is_transferable', 'neighbor_throw_only', 'allow_jokers'),
+            'fields': (
+                'is_transferable',
+                'neighbor_throw_only',
+                'allow_jokers',
+                'share_hand_signals',
+            ),
             'description': 'Gameplay rule modifications.'
         }),
         ('Advanced Configuration', {

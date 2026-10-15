@@ -1,6 +1,7 @@
 /**
  * Durak table: SVG cards, opponents, felt, deck and trump.
  * Cards can be dragged, or selected and played with a button, the keyboard, or a table target.
+ * Lifted cards and a reorder can be shown on other seats as backs, when the lobby allows it.
  * dataTransfer is mirrored to text/plain for browsers with limited custom MIME support.
  */
 (function () {
@@ -17,6 +18,10 @@
   var refreshChain = Promise.resolve();
   /** @type {Set<string>} */
   var selected = new Set();
+  /** Latest tell per opponent: sort mode and lifted indexes. Never card faces. */
+  var handSignals = {};
+  var lastSentSignal = "";
+  var gameSocket = null;
 
   var SUIT_SYMBOL = {
     Hearts: "\u2665",
@@ -254,6 +259,33 @@
     return "Waiting";
   }
 
+  /** Two letters for a seat that has no avatar image. */
+  function avatarInitials(username) {
+    var letters = String(username || "").match(/[0-9A-Za-z\u0400-\u04FF]/g) || [];
+    if (!letters.length) return "?";
+    return (letters[0] + (letters[1] || "")).toUpperCase();
+  }
+
+  function paintOpponentAvatar(div, player) {
+    var avatar = div.querySelector(".play-opponent__avatar");
+    if (!avatar) return;
+    var initials = avatar.querySelector(".play-opponent__initials");
+    if (initials) initials.textContent = avatarInitials(player.username);
+    var url = player.avatar_url || "";
+    var img = avatar.querySelector("img");
+    if (!url) {
+      if (img) img.remove();
+      return;
+    }
+    if (!img) {
+      img = document.createElement("img");
+      img.alt = "";
+      img.addEventListener("error", function () { img.remove(); });
+      avatar.appendChild(img);
+    }
+    if (img.getAttribute("src") !== url) img.setAttribute("src", url);
+  }
+
   function roleIcon(key) {
     if (key === "attack") {
       return '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/></svg>';
@@ -376,16 +408,45 @@
     return null;
   }
 
-  /** Add or drop face-down cards. Existing images stay, so a count change does not reload them. */
-  function syncOpponentBacks(backs, n) {
-    var show = Math.min(6, Math.max(0, n));
+  /**
+   * Add or drop face-down cards. Existing images stay, so a count change does not reload them.
+   * With hand signals on, one back is kept per card so a lift maps to a real position.
+   */
+  function syncOpponentBacks(backs, n, userId) {
+    var count = Math.max(0, n);
+    var show = signalsOn() ? count : Math.min(6, count);
     while (backs.childElementCount > show) backs.removeChild(backs.lastElementChild);
     while (backs.childElementCount < show) {
       var span = document.createElement("span");
       span.className = "play-opponent__back";
-      span.style.setProperty("--i", String(backs.childElementCount));
       span.innerHTML = cardBackSvgHTML();
       backs.appendChild(span);
+    }
+    layoutOpponentFan(backs);
+    paintOpponentSignal(backs, userId);
+  }
+
+  /** Tight fan, mirrored so it opens downward from under the name. */
+  function layoutOpponentFan(backs) {
+    var cards = backs.children;
+    var count = cards.length;
+    var mid = (count - 1) / 2;
+    var wide = window.matchMedia("(min-width: 900px)").matches;
+    var squeeze = null;
+    if (wide && count > 8) {
+      var step = Math.max(6, (200 - 52) / (count - 1));
+      squeeze = Math.round(52 - step);
+    }
+    for (var i = 0; i < count; i++) {
+      var card = cards[i];
+      var offset = i - mid;
+      var norm = mid > 0 ? Math.abs(offset) / mid : 0;
+      card.style.setProperty("--i", String(i));
+      card.style.setProperty("--fan-rot", (-offset * 10).toFixed(2) + "deg");
+      card.style.setProperty("--fan-y", (-norm * norm * 4).toFixed(2) + "px");
+      card.style.zIndex = String(i + 1);
+      if (squeeze == null || i === 0) card.style.removeProperty("margin-left");
+      else card.style.marginLeft = (-squeeze) + "px";
     }
   }
 
@@ -396,8 +457,14 @@
     div.innerHTML =
       '<div class="play-seat-mark" aria-hidden="true"></div>' +
       '<div class="play-opponent__info">' +
+      '<div class="play-opponent__head">' +
+      '<span class="play-opponent__portrait">' +
+      '<span class="play-opponent__avatar" aria-hidden="true">' +
+      '<span class="play-opponent__initials"></span></span>' +
       '<span class="play-role"><span></span></span>' +
+      "</span>" +
       '<span class="play-opponent__name"></span>' +
+      "</div>" +
       '<span class="play-opponent__meta"></span>' +
       '<span class="play-opponent__duty"></span>' +
       '<span class="play-opponent__badge"></span>' +
@@ -419,10 +486,12 @@
       var role = div.querySelector(".play-role");
       if (mark) mark.innerHTML = roleIcon(roleKey);
       if (role) {
-        role.className = "play-role play-role--" + roleKey;
-        role.innerHTML = roleIcon(roleKey) + "<span>" + roleLabel(roleKey) + "</span>";
+        var icon = roleIcon(roleKey);
+        role.className = "play-role play-role--" + roleKey + (icon ? "" : " is-empty");
+        role.innerHTML = icon + "<span>" + roleLabel(roleKey) + "</span>";
       }
     }
+    paintOpponentAvatar(div, player);
     var name = div.querySelector(".play-opponent__name");
     if (name) {
       name.textContent = player.username || "";
@@ -433,8 +502,8 @@
     var place = seatPlace(index, total, player.user_id, uid, rt);
     var meta = div.querySelector(".play-opponent__meta");
     if (meta) {
-      meta.textContent = n + (n === 1 ? " card" : " cards") + (place ? " · " + place : "");
-      meta.title = meta.textContent;
+      meta.textContent = place;
+      meta.title = place;
     }
     var dutyEl = div.querySelector(".play-opponent__duty");
     if (dutyEl) {
@@ -445,7 +514,126 @@
         (mustAct ? " is-acting" : "");
     }
     var backs = div.querySelector(".play-opponent__backs");
-    if (backs) syncOpponentBacks(backs, n);
+    if (backs) syncOpponentBacks(backs, n, player.user_id);
+  }
+
+  function signalsOn() {
+    return !!(state && state.share_hand_signals);
+  }
+
+  /**
+   * Mark lifted backs and play a short reorder when the sort mode changed.
+   * @param {HTMLElement} backs
+   * @param {string|number} userId
+   */
+  function paintOpponentSignal(backs, userId) {
+    var signal = signalsOn() ? handSignals[String(userId)] : null;
+    var liftedAt = {};
+    if (signal) {
+      (signal.selected || []).forEach(function (index) { liftedAt[index] = true; });
+    }
+    var cards = backs.children;
+    var lifted = 0;
+    for (var i = 0; i < cards.length; i++) {
+      var on = !!liftedAt[i];
+      cards[i].classList.toggle("is-lifted", on);
+      cards[i].style.zIndex = on ? String(40 + i) : String(i + 1);
+      if (on) lifted += 1;
+      if (signal) cards[i].setAttribute("aria-hidden", "true");
+      else cards[i].removeAttribute("aria-hidden");
+    }
+    if (signal && signal.shuffle) {
+      signal.shuffle = false;
+      backs.classList.remove("is-shuffling");
+      void backs.offsetWidth;
+      backs.classList.add("is-shuffling");
+      window.clearTimeout(backs._shuffleTimer);
+      backs._shuffleTimer = window.setTimeout(function () {
+        backs.classList.remove("is-shuffling");
+      }, 800);
+    }
+    if (!signal) {
+      backs.classList.remove("is-shuffling");
+      backs.removeAttribute("role");
+      backs.removeAttribute("aria-label");
+      return;
+    }
+    var name = "";
+    var seat = backs.closest(".play-opponent");
+    var nameEl = seat && seat.querySelector(".play-opponent__name");
+    if (nameEl) name = nameEl.textContent || "";
+    var label = (name ? name + ", " : "") + cards.length +
+      (cards.length === 1 ? " card" : " cards");
+    if (lifted === 1) label += ", 1 lifted";
+    else if (lifted > 1) label += ", " + lifted + " lifted";
+    backs.setAttribute("role", "img");
+    backs.setAttribute("aria-label", label);
+  }
+
+  function opponentName(userId) {
+    var row = (state && state.players || []).find(function (player) {
+      return String(player.user_id) === String(userId);
+    });
+    return (row && row.username) || "A player";
+  }
+
+  function announceHandSignal(name, prev, next) {
+    var live = document.getElementById("play-hand-cues");
+    if (!live) return;
+    if (!prev) {
+      if (!next.selected.length) return;
+      live.textContent = next.selected.length === 1
+        ? name + " lifted a card."
+        : name + " lifted " + next.selected.length + " cards.";
+      return;
+    }
+    var bits = [];
+    if (prev.sort !== next.sort) bits.push(name + " reordered their hand");
+    var prevKey = prev.selected.join(",");
+    var nextKey = next.selected.join(",");
+    if (prevKey !== nextKey) {
+      var after = next.selected.length;
+      if (!after) bits.push(name + " lowered their cards");
+      else if (after === 1) bits.push(name + " lifted a card");
+      else bits.push(name + " lifted " + after + " cards");
+    }
+    if (!bits.length) return;
+    live.textContent = bits.join(". ") + ".";
+  }
+
+  /**
+   * Store another seat's tell. Indexes are positions in that fan, not card ids.
+   * @param {Object} payload
+   * @param {boolean} announce
+   */
+  function rememberHandSignal(payload, announce) {
+    if (!payload || payload.user_id == null) return;
+    var id = String(payload.user_id);
+    if (uidStr() && id === uidStr()) return;
+    if (state && state.share_hand_signals === false) return;
+    var selectedIndexes = [];
+    if (Array.isArray(payload.selected)) {
+      payload.selected.forEach(function (index) {
+        if (typeof index === "number" && index >= 0 && Math.floor(index) === index) {
+          selectedIndexes.push(index);
+        }
+      });
+    }
+    selectedIndexes.sort(function (a, b) { return a - b; });
+    var sort = typeof payload.sort === "string" ? payload.sort : "";
+    var prev = handSignals[id];
+    var same = prev && prev.sort === sort && prev.selected.join(",") === selectedIndexes.join(",");
+    if (same) return;
+    var next = {
+      sort: sort,
+      selected: selectedIndexes,
+      shuffle: !!(prev && sort && prev.sort !== sort),
+    };
+    handSignals[id] = next;
+    if (announce && state) announceHandSignal(opponentName(id), prev, next);
+    var node = findOpponent(id);
+    var backs = node && node.querySelector(".play-opponent__backs");
+    if (backs) paintOpponentSignal(backs, id);
   }
 
   function findOpponent(id) {
@@ -1080,6 +1268,7 @@
     var error = document.getElementById("play-chat-error");
     if (!section || !log || !form || !input) return;
     section.hidden = false;
+    wireChatToggle();
     var url = "/api/fools/lobbies/" + lobbyId + "/messages/";
 
     function appendMessage(message) {
@@ -1175,10 +1364,11 @@
     if (selected.has(cardId)) selected.delete(cardId);
     else {
       var card = me && me.hand && me.hand.find(function (item) { return item.id === cardId; });
-      if (!card || !cardIsLegal(card, uid, me, rt, trumpSuit)) return;
+      if (!card) return;
       selected.add(cardId);
     }
     refreshHandMarks(uid, me, rt, trumpSuit);
+    publishHandSignal();
   }
 
   function refreshHandMarks(uid, me, rt, trumpSuit) {
@@ -1196,27 +1386,137 @@
   }
 
   function markHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit) {
-    var mid = (n - 1) / 2;
     var legal = cardIsLegal(card, uid, me, rt, trumpSuit);
     var on = selected.has(card.id);
     wrap.classList.toggle("play-card--trump", !!(trumpSuit && card.suit === trumpSuit));
     wrap.classList.toggle("is-selected", on);
     wrap.classList.toggle("is-legal", legal);
-    wrap.classList.toggle("is-dim", !legal);
+    wrap.classList.toggle("is-dim", !legal && !on);
     wrap.setAttribute("aria-pressed", on ? "true" : "false");
     wrap.setAttribute("aria-label", card.rank + " of " + card.suit);
-    wrap.style.zIndex = on ? "40" : String(30 - Math.abs(idx - mid));
+    wrap.style.zIndex = on ? "80" : String(idx + 1);
   }
 
-  function placeHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit) {
+  var PHONE_HAND = window.matchMedia("(max-width: 899px)");
+  /** Face art viewBox is 750×1050. */
+  var CARD_FACE_RATIO = 1050 / 750;
+
+  /**
+   * Largest turn of an outer phone card, in degrees.
+   * A longer hand uses a flatter arc so the corner index stays on screen.
+   * @param {number} count
+   * @return {number}
+   */
+  function phoneHandEdgeDegrees(count) {
+    if (count <= 1) return 0;
+    if (count <= 4) return 8;
+    if (count <= 6) return 6.5;
+    if (count <= 9) return 5;
+    return Math.max(2.5, 32 / count);
+  }
+
+  /**
+   * Horizontal padding that covers the rotated outer corner, including a selected card.
+   * @param {number} cardW
+   * @param {number} edgeDeg
+   * @param {number} count
+   * @return {number}
+   */
+  function handFanInset(cardW, edgeDeg, count) {
+    if (count <= 1 || !edgeDeg) return 8;
+    var rad = edgeDeg * Math.PI / 180;
+    var cardH = cardW * CARD_FACE_RATIO;
+    var hang = cardH * Math.sin(rad) + (cardW / 2) * (1 - Math.cos(rad));
+    return Math.max(8, Math.ceil(hang + 6));
+  }
+
+  /**
+   * Fan geometry for one hand.
+   * Phones keep a readable card width and overlap neighbors more as the hand grows.
+   * Wide screens keep the fixed arc.
+   * @param {HTMLElement} inner
+   * @param {number} count
+   * @return {{rotStep:number, rise:number, lift:number, xStep:number, key:string}}
+   */
+  function handFanMetrics(inner, count) {
+    if (!PHONE_HAND.matches) {
+      inner.style.removeProperty("--hand-card-w");
+      inner.style.removeProperty("--hand-overlap");
+      inner.style.removeProperty("--hand-inset");
+      return { rotStep: 7.25, rise: 16, lift: 3, xStep: 0.85, key: "wide" };
+    }
+    var full = inner.clientWidth;
+    if (!full || count < 1) {
+      return { rotStep: 6, rise: 8, lift: 1.5, xStep: 0, key: "phone" };
+    }
+    var preferred = 72;
+    var minW = 46;
+    var cardW = preferred;
+    var gaps = count - 1;
+    var edge = phoneHandEdgeDegrees(count);
+    var inset = handFanInset(cardW, edge, count);
+    var usable = Math.max(1, full - inset * 2);
+    var overlap = 0;
+    if (gaps > 0) {
+      var minStep = count >= 12 ? 14 : 18;
+      var step = (usable - cardW) / gaps;
+      if (step < minStep) {
+        cardW = Math.max(minW, Math.min(preferred, usable - gaps * minStep));
+        edge = phoneHandEdgeDegrees(count);
+        inset = handFanInset(cardW, edge, count);
+        usable = Math.max(1, full - inset * 2);
+        step = (usable - cardW) / gaps;
+      }
+      var light = count <= 4 ? 8 : 12;
+      if (cardW + gaps * (cardW - light) <= usable) overlap = light;
+      else overlap = Math.max(0, cardW - step);
+    } else {
+      cardW = Math.min(preferred, usable);
+    }
+    edge = phoneHandEdgeDegrees(count);
+    inset = handFanInset(cardW, edge, count);
+    usable = Math.max(1, full - inset * 2);
+    if (gaps > 0) {
+      var row = cardW + gaps * (cardW - overlap);
+      if (row > usable) overlap += (row - usable) / gaps;
+    }
+    cardW = Math.floor(cardW * 10) / 10;
+    overlap = Math.ceil(overlap * 10) / 10;
+    inner.style.setProperty("--hand-card-w", cardW.toFixed(1) + "px");
+    inner.style.setProperty("--hand-overlap", overlap ? (-overlap).toFixed(1) + "px" : "0px");
+    inner.style.setProperty("--hand-inset", inset.toFixed(1) + "px");
+    var mid = gaps / 2;
+    var rotStep = mid > 0 ? edge / mid : 0;
+    var scale = rotStep / 7.25;
+    return {
+      rotStep: rotStep,
+      rise: 16 * scale,
+      lift: 3 * scale,
+      xStep: 0,
+      key: ["p", cardW.toFixed(1), overlap.toFixed(1), rotStep.toFixed(2), String(inset)].join(":"),
+    };
+  }
+
+  /**
+   * @param {HTMLElement} wrap
+   * @param {{id:string, rank:string, suit:string}} card
+   * @param {number} idx
+   * @param {number} n
+   * @param {string} uid
+   * @param {?Object} me
+   * @param {Object} rt
+   * @param {?string} trumpSuit
+   * @param {{rotStep:number, rise:number, lift:number, xStep:number}} fan
+   */
+  function placeHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit, fan) {
     var mid = (n - 1) / 2;
     var maxDist = Math.max(mid, n - 1 - mid) || 1;
     var dist = Math.abs(idx - mid);
     var norm = dist / maxDist;
     markHandCard(wrap, card, idx, n, uid, me, rt, trumpSuit);
-    wrap.style.setProperty("--fan-rot", (idx - mid) * 7.25 + "deg");
-    wrap.style.setProperty("--fan-y", (norm * norm * 16 + norm * 3) + "px");
-    wrap.style.setProperty("--fan-x", ((idx - mid) * 0.85) + "px");
+    wrap.style.setProperty("--fan-rot", ((idx - mid) * fan.rotStep).toFixed(2) + "deg");
+    wrap.style.setProperty("--fan-y", (norm * norm * fan.rise + norm * fan.lift).toFixed(2) + "px");
+    wrap.style.setProperty("--fan-x", ((idx - mid) * fan.xStep).toFixed(2) + "px");
   }
 
   /** True when the fan nodes already match this display order. */
@@ -1294,6 +1594,40 @@
     var base = SUIT_ORDER[suit] != null ? SUIT_ORDER[suit] : 4;
     if (trumpSuit && suit === trumpSuit) return trumpOnRight ? 8 : -1;
     return base;
+  }
+
+  /** Same order the table paints, skipping cards that are still flying in. */
+  function visibleSortedHand(me, trumpSuit) {
+    return sortedHand(me && me.hand, trumpSuit).filter(function (card) {
+      return !(inboundMine && inboundMine[card.id]);
+    });
+  }
+
+  function handSignalKey(me, trumpSuit) {
+    var indexes = [];
+    visibleSortedHand(me, trumpSuit).forEach(function (card, index) {
+      if (selected.has(card.id)) indexes.push(index);
+    });
+    return handSort + ":" + indexes.join(",");
+  }
+
+  /** Tell other seats which positions are lifted. Card ids stay on this client. */
+  function publishHandSignal() {
+    if (!signalsOn()) return;
+    var me = viewer(uidStr());
+    if (!me || !me.hand) return;
+    if (!gameSocket || gameSocket.readyState !== 1) return;
+    var key = handSignalKey(me, state && state.trump_card ? state.trump_card.suit : null);
+    if (key === lastSentSignal) return;
+    lastSentSignal = key;
+    var split = key.indexOf(":");
+    var rest = key.slice(split + 1);
+    var indexes = rest ? rest.split(",").map(function (n) { return Number(n); }) : [];
+    gameSocket.send(JSON.stringify({
+      action: "hand_signal",
+      sort: key.slice(0, split),
+      selected: indexes,
+    }));
   }
 
   /** Display order only. Requests still use the hand order from the server. */
@@ -1379,9 +1713,7 @@
       inner.className = "play-hand-fan__inner";
       handEl.appendChild(inner);
     }
-    var cards = sortedHand(me && me.hand, trumpSuit).filter(function (card) {
-      return !(inboundMine && inboundMine[card.id]);
-    });
+    var cards = visibleSortedHand(me, trumpSuit);
     var keep = {};
     cards.forEach(function (card) {
       keep[card.id] = true;
@@ -1393,7 +1725,9 @@
     });
     /* Moving a card node restarts its transform. Skip that while the fan is unchanged. */
     var ordered = handInOrder(inner, cards);
-    var sameFan = ordered && inner.dataset.fan === String(cards.length);
+    var fan = handFanMetrics(inner, cards.length);
+    var fanKey = cards.length + ":" + fan.key;
+    var sameFan = ordered && inner.dataset.fan === fanKey;
     if (!ordered) {
       cards.forEach(function (card) {
         var wrap = findByAttr(inner, "data-cid", card.id);
@@ -1404,9 +1738,10 @@
       var wrap = inner.children[idx];
       if (!wrap) return;
       if (sameFan) markHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit);
-      else placeHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit);
+      else placeHandCard(wrap, card, idx, cards.length, uid, me, rt, trumpSuit, fan);
     });
-    inner.dataset.fan = String(cards.length);
+    inner.dataset.fan = fanKey;
+    publishHandSignal();
   }
 
   function selectedBeater(me) {
@@ -1596,6 +1931,8 @@
     }
     renderMyRole(uid, rt);
     renderOpponents(uid, rt);
+    var signalNote = document.getElementById("play-signal-note");
+    if (signalNote) signalNote.hidden = !signalsOn();
     if (dealView) renderDeckTrumpCorner(tcTrump, dealView.deck, dealView.trump);
     else renderDeckTrumpCorner(tcTrump, state.deck_remaining || 0, !!state.trump_in_deck);
     renderDiscard();
@@ -2335,10 +2672,12 @@
     var wsProto = location.protocol === "https:" ? "wss:" : "ws:";
     if (gameSocketRetries > 0) setLink("Reconnecting…");
     var ws = new WebSocket(wsProto + "//" + location.host + "/ws/games/" + gameId + "/");
+    gameSocket = ws;
     ws.onopen = function () {
       if (token !== gameSocketToken) return;
       gameSocketRetries = 0;
       setLink("");
+      lastSentSignal = "";
       refresh().catch(function (e) {
         setErr(e.message);
       });
@@ -2349,6 +2688,15 @@
         message = JSON.parse(ev.data);
       } catch (ignore) {
         message = null;
+      }
+      if (message && message.event === "hand_signal") {
+        rememberHandSignal(message.payload || {}, true);
+        return;
+      }
+      if (message && message.event === "hand_signals") {
+        var rows = (message.payload && message.payload.signals) || [];
+        rows.forEach(function (row) { rememberHandSignal(row, false); });
+        return;
       }
       if (message && message.event === "rematch_started") {
         var nextGame = message.payload && message.payload.game_id;
@@ -2364,6 +2712,7 @@
       });
     };
     ws.onclose = function () {
+      if (gameSocket === ws) gameSocket = null;
       if (token !== gameSocketToken) return;
       setLink("Connection lost.");
       var delay = Math.min(10000, 800 * Math.pow(2, Math.min(gameSocketRetries, 4)));
@@ -2376,7 +2725,33 @@
     };
   }
 
+  function wireChatToggle() {
+    var button = document.getElementById("play-chat-toggle");
+    var panel = document.getElementById("play-chat");
+    if (!button || !panel || button.dataset.wired === "1") return;
+    button.dataset.wired = "1";
+    function setOpen(open) {
+      panel.classList.toggle("is-open", open);
+      panel.hidden = false;
+      button.setAttribute("aria-expanded", open ? "true" : "false");
+      button.textContent = open ? "Close chat" : "Chat";
+      if (!open) return;
+      var input = document.getElementById("play-chat-input");
+      if (input) input.focus();
+    }
+    button.addEventListener("click", function () {
+      setOpen(!panel.classList.contains("is-open"));
+    });
+    panel.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") {
+        setOpen(false);
+        button.focus();
+      }
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireChatToggle();
     loadHandSort();
     paintSending();
     paintSortButton();
@@ -2385,6 +2760,16 @@
     var seatLayout = window.matchMedia("(min-width: 900px)");
     seatLayout.addEventListener("change", function () {
       if (state) render(state.table || []);
+    });
+    var handResizeTimer = null;
+    window.addEventListener("resize", function () {
+      if (!state) return;
+      window.clearTimeout(handResizeTimer);
+      handResizeTimer = window.setTimeout(function () {
+        var uid = uidStr();
+        var rt = (state && state.runtime) || {};
+        renderHand(uid, viewer(uid), rt, state && state.trump_card ? state.trump_card.suit : null);
+      }, 100);
     });
     loadHistory();
     paintHistory();

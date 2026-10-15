@@ -118,6 +118,7 @@ class LobbyListCreateAPI(APIView):
                 allow_jokers=d["allow_jokers"],
                 fill_with_bots=d["fill_with_bots"],
                 turn_time_limit=d.get("turn_time_limit"),
+                share_hand_signals=d["share_hand_signals"],
             )
         except GameError as e:
             return _err(e)

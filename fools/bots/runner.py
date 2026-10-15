@@ -185,6 +185,7 @@ def build_bot_state(game: Game) -> BotState | None:
 
 def _thrower(game, settings, attacker_id, defender_id, table):
     ranks = {row.attack.rank for row in table}
+    ranks.update(row.defense.rank for row in table if row.defense is not None)
     if not ranks or _room(game, defender_id, table) < 1:
         return None
     allowed = {attacker_id}
@@ -274,10 +275,22 @@ def _table(game) -> list[TableRow]:
     trump_suit = game.trump_card.suit_id
     rows = []
     query = TableCard.objects.filter(fools=game).select_related(
-        "attack_card__rank", "attack_card__suit"
+        "attack_card__rank",
+        "attack_card__suit",
+        "defense_card__rank",
+        "defense_card__suit",
     )
     for row in query:
         card = row.attack_card
+        defense = None
+        if row.defense_card_id is not None:
+            beat = row.defense_card
+            defense = CardView(
+                id=beat.id,
+                suit_id=beat.suit_id,
+                rank=int(beat.rank.value),
+                is_trump=beat.suit_id == trump_suit,
+            )
         rows.append(
             TableRow(
                 id=row.id,
@@ -288,6 +301,7 @@ def _table(game) -> list[TableRow]:
                     is_trump=card.suit_id == trump_suit,
                 ),
                 defended=row.defense_card_id is not None,
+                defense=defense,
             )
         )
     return rows

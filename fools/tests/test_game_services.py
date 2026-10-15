@@ -23,7 +23,9 @@ from fools.services import (
     _draw_round_after_discard,
     _maybe_finish_game,
     _table_attack_ranks,
+    bito,
     create_lobby,
+    defend,
     join_lobby,
     PHASE_TAKING,
     pass_throw,
@@ -507,6 +509,76 @@ def test_transfer_passes_the_attack_to_the_next_player(durak_deck_36, user_facto
 
     with pytest.raises(GameError):
         transfer_attack(game, nxt, [filler[0].id])
+
+
+@pytest.mark.django_db
+def test_transfer_swaps_roles_when_only_two_play(durak_deck_36, user_factory):
+    """A two-player pass makes the passer the attacker and the other the defender.
+
+    After the pile is beaten, only the passer may end the wave.
+    """
+    attacker = user_factory(username="pair_a")
+    defender = user_factory(username="pair_b")
+    lobby = Lobby.objects.create(owner=attacker, name="transfer-pair", status="playing")
+    LobbySettings.objects.create(
+        lobby=lobby, max_players=2, card_count=36, is_transferable=True
+    )
+    trump = Card.objects.filter(
+        special_card__isnull=True, rank__value=14, suit__name="Hearts"
+    ).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={
+            "phase": PHASE_BUILD,
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=0)
+    six_clubs = Card.objects.get(
+        special_card__isnull=True, rank__value=6, suit__name="Clubs"
+    )
+    six_spades = Card.objects.get(
+        special_card__isnull=True, rank__value=6, suit__name="Spades"
+    )
+    seven_clubs = Card.objects.get(
+        special_card__isnull=True, rank__value=7, suit__name="Clubs"
+    )
+    seven_spades = Card.objects.get(
+        special_card__isnull=True, rank__value=7, suit__name="Spades"
+    )
+    spare = list(
+        Card.objects.filter(special_card__isnull=True, rank__value=9).exclude(suit__name="Hearts")[:2]
+    )
+    TableCard.objects.create(fools=game, attack_card=six_clubs)
+    PlayerHand.objects.create(fools=game, player=defender, card=six_spades, order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=defender, card=spare[0], order_in_hand=2)
+    PlayerHand.objects.create(fools=game, player=attacker, card=seven_clubs, order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=attacker, card=seven_spades, order_in_hand=2)
+    PlayerHand.objects.create(fools=game, player=attacker, card=spare[1], order_in_hand=3)
+
+    transfer_attack(game, defender, [six_spades.id])
+    game.refresh_from_db()
+    assert game.runtime_state["attacker_id"] == str(defender.id)
+    assert game.runtime_state["defender_id"] == str(attacker.id)
+    assert TableCard.objects.filter(fools=game).count() == 2
+
+    rows = {
+        row.attack_card_id: row
+        for row in TableCard.objects.filter(fools=game)
+    }
+    defend(game, attacker, rows[six_clubs.id].id, seven_clubs.id)
+    defend(game, attacker, rows[six_spades.id].id, seven_spades.id)
+    with pytest.raises(GameError) as exc:
+        bito(game, attacker)
+    assert exc.value.code == "turn"
+    bito(game, defender)
+    game.refresh_from_db()
+    assert game.runtime_state["phase"] == PHASE_BETWEEN
+    assert not TableCard.objects.filter(fools=game).exists()
 
 
 @pytest.mark.django_db

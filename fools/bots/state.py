@@ -25,6 +25,7 @@ class TableRow:
     id: UUID
     attack: CardView
     defended: bool
+    defense: CardView | None = None
 
 
 @dataclass(frozen=True)
