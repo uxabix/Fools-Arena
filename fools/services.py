@@ -783,7 +783,8 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
     if LobbyPlayer.objects.filter(user=user, lobby=lobby, status="left").exists():
         lp = LobbyPlayer.objects.get(user=user, lobby=lobby)
         lp.status = "waiting"
-        lp.save(update_fields=["status"])
+        lp.joined_at = timezone.now()
+        lp.save(update_fields=["status", "joined_at"])
     else:
         lp = LobbyPlayer.objects.create(lobby=lobby, user=user, status="waiting")
     get_lobby_chat(lobby)
@@ -798,7 +799,8 @@ def leave_lobby(lobby: Lobby, user: User) -> dict:
 
     If a match is still running, the leaver forfeits it. Bots do not keep
     the lobby open: when no human remains, the lobby is closed. If the
-    owner leaves and another human stays, ownership moves to that human.
+    owner leaves and another human stays, ownership moves to the human
+    who has been seated the longest.
 
     Args:
         lobby: Lobby to exit.
@@ -832,7 +834,7 @@ def leave_lobby(lobby: Lobby, user: User) -> dict:
         next_lp = (
             LobbyPlayer.objects.filter(lobby=lobby, user__is_bot=False)
             .exclude(status="left")
-            .order_by("user__username")
+            .order_by("joined_at", "id")
             .first()
         )
         if next_lp is not None:
@@ -855,11 +857,16 @@ def set_ready(lobby: Lobby, user: User, ready: bool):
         ready: ``True`` for ready, ``False`` for waiting.
 
     Raises:
-        GameError: If ``user`` is not an active member.
+        GameError: If ``user`` is not an active member, or the lobby is not
+            waiting.
     """
+    if lobby.status != "waiting":
+        raise GameError("The lobby is not waiting for players.", "state")
     lp = LobbyPlayer.objects.filter(lobby=lobby, user=user).exclude(status="left").first()
     if not lp:
         raise GameError("Not in lobby", "not_found")
+    if lp.status == "playing":
+        raise GameError("The lobby is not waiting for players.", "state")
     lp.status = "ready" if ready else "waiting"
     lp.save(update_fields=["status"])
     broadcast_lobby(lobby.id, "ready_changed", {"user_id": str(user.id), "ready": ready})
@@ -870,7 +877,8 @@ def start_game(lobby: Lobby, user: User) -> Game:
     """Deal cards, set trump, and spawn an in-progress :class:`~fools.models.Game`.
 
     Args:
-        lobby: Must be in ``waiting`` with at least two ``ready`` members.
+        lobby: Must be ``waiting``. Without bots, at least two members are
+            ready. With bots, every human still seated is ready.
         user: Lobby owner (only owners may start).
 
     Returns:
@@ -884,9 +892,12 @@ def start_game(lobby: Lobby, user: User) -> Game:
     if Game.objects.filter(lobby=lobby, status="in_progress").exists():
         raise GameError("Game already in progress", "state")
     if lobby.settings.fill_with_bots:
-        from fools.bots.seating import fill_empty_seats
+        if lobby.status == "waiting" and not lobby.can_start_game():
+            raise GameError("Every player needs to be ready", "precondition")
+        if lobby.can_start_game():
+            from fools.bots.seating import fill_empty_seats
 
-        fill_empty_seats(lobby)
+            fill_empty_seats(lobby)
     if not lobby.can_start_game():
         raise GameError("Cannot start game", "precondition")
     settings = lobby.settings
@@ -905,10 +916,12 @@ def start_game(lobby: Lobby, user: User) -> Game:
 
     lobby.status = "playing"
     lobby.save(update_fields=["status"])
-    for lp in lobby.players.filter(status__in=["waiting", "ready"]):
+    for lp in lobby.players.filter(status__in=["waiting", "ready"]).select_related("user"):
         if lp in ready_players:
             lp.status = "playing"
             lp.save(update_fields=["status"])
+        elif settings.fill_with_bots and not lp.user.is_bot:
+            raise GameError("Every player needs to be ready", "precondition")
         else:
             lp.leave_lobby()
 
@@ -1066,6 +1079,7 @@ def serialize_lobby(lobby: Lobby) -> dict:
                 "username": row.user.username,
                 "status": row.status,
                 "is_bot": row.user.is_bot,
+                "joined_at": row.joined_at.isoformat(),
             }
             for row in members
         ],

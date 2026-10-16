@@ -1,356 +1,116 @@
 {% extends "base.html" %}
+{% load static %}
+
 {% block title %}Lobby — Fools Arena{% endblock %}
+
 {% block content %}
-<div class="game-page lobby-detail-page">
+<div class="game-page lobby-detail-page" data-lobby-id="{{ request.resolver_match.kwargs.lobby_id }}">
   <a class="game-back" href="{% url 'fools-lobby-list-page' %}">← All lobbies</a>
 
-  <section class="game-panel">
-    <div id="lobby-banner" class="game-banner game-banner--wait" role="status" aria-live="polite"></div>
-    <div id="lobby-invite" class="game-banner game-banner--wait lobby-invite" hidden>
-      <h3 class="game-subtitle">Invite players</h3>
-      <p>This lobby is hidden from the list. Share this link, and tell players the password you chose. The password cannot be shown again.</p>
-      <label class="lobby-field__label" for="lobby-invite-url">Lobby link</label>
-      <input id="lobby-invite-url" class="lobby-invite__link" type="text" readonly />
-      <button type="button" id="lobby-invite-copy" class="game-btn game-btn--secondary">Copy link</button>
-      <p id="lobby-invite-status" role="status"></p>
+  <section class="game-panel" aria-labelledby="lobby-title">
+    <div id="lobby-connection" class="game-banner game-banner--wait">
+      <p id="lobby-connection-text" role="status">Connecting…</p>
+      <div id="lobby-connection-actions" class="lobby-connection__actions" hidden>
+        <button type="button" id="lobby-retry" class="game-btn game-btn--secondary" hidden>Try again</button>
+        <a id="lobby-connection-back" class="game-btn game-btn--secondary" href="{% url 'fools-lobby-list-page' %}" hidden>Back to lobbies</a>
+      </div>
     </div>
+
+    <h1 id="lobby-title" class="game-title">Lobby</h1>
+
     <form id="private-join" class="game-form game-form--stacked" hidden>
       <p id="private-join-lead" class="lobby-lead">This lobby is private. Enter the password from the player who invited you.</p>
       <label class="lobby-field__label" for="private-join-password">Password</label>
-      <input id="private-join-password" name="password" type="password" autocomplete="current-password" required />
+      <input id="private-join-password" name="password" type="password" autocomplete="current-password" aria-describedby="private-join-lead" required />
       <p id="private-join-error" class="lobby-field__error" role="alert" hidden></p>
-      <button type="submit" class="game-btn game-btn--primary">Join lobby</button>
+      <button type="submit" id="private-join-submit" class="game-btn game-btn--primary">
+        <span id="private-join-label">Join lobby</span>
+      </button>
     </form>
-    <h2 id="lobby-title" class="game-title">Lobby</h2>
-    <pre id="lobby-meta" class="game-meta" aria-label="Lobby settings"></pre>
-    <ul id="players" class="game-players"></ul>
-    <div id="actions" class="game-actions"></div>
-    <div class="game-btn-row">
-      <button type="button" id="btn-ready" class="game-btn game-btn--secondary game-btn--hidden">Ready</button>
-      <button type="button" id="btn-start" class="game-btn game-btn--primary game-btn--hidden">Start game</button>
-      <button type="button" id="btn-join" class="game-btn game-btn--primary">Join this lobby</button>
-      <button type="button" id="btn-leave" class="game-btn game-btn--secondary game-btn--hidden">Leave lobby</button>
+
+    <dl id="lobby-settings" class="lobby-settings" aria-label="Lobby settings" hidden></dl>
+
+    <div id="lobby-roster" class="lobby-roster" hidden>
+      <div class="lobby-roster-head">
+        <h2 id="players-heading" class="game-subtitle">Players</h2>
+        <p id="players-count" class="lobby-roster-count"></p>
+        <p id="ready-count" class="lobby-ready-count"></p>
+      </div>
+      <p id="players-empty" class="lobby-lead" hidden>Nobody is in this lobby yet.</p>
+      <ul id="players" class="game-players" aria-labelledby="players-heading"></ul>
     </div>
-    <p id="err" class="text-error" aria-live="polite"></p>
+    <p id="ready-live" class="visually-hidden" role="status" aria-live="polite"></p>
+
+    <div id="actions" class="game-actions" hidden></div>
+    <p id="join-prompt" class="lobby-lead" hidden>You are not in this lobby yet. Join to take a seat and use the chat.</p>
+    <p id="member-note" class="lobby-lead" hidden></p>
+    <p id="start-hint" class="lobby-start-hint" role="status" hidden></p>
+
+    <div class="game-btn-row">
+      <div class="lobby-action" hidden>
+        <button type="button" id="btn-join" class="game-btn game-btn--primary game-btn--hidden">
+          <span id="btn-join-label">Join this lobby</span>
+        </button>
+        <p id="join-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+      <div class="lobby-action" hidden>
+        <button type="button" id="btn-ready" class="game-btn game-btn--secondary game-btn--hidden" aria-pressed="false">
+          <span id="btn-ready-label">Ready</span>
+        </button>
+        <p id="ready-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+      <div class="lobby-action" hidden>
+        <button type="button" id="btn-start" class="game-btn game-btn--primary game-btn--hidden">
+          <span id="btn-start-label">Start game</span>
+        </button>
+        <p id="start-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+      <div class="lobby-action" hidden>
+        <button type="button" id="btn-leave" class="game-btn game-btn--secondary game-btn--hidden">
+          <span id="btn-leave-label">Leave lobby</span>
+        </button>
+        <p id="leave-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+    </div>
+
+    <div id="lobby-invite" class="lobby-invite" hidden>
+      <h2 class="game-subtitle">Invite players</h2>
+      <p id="lobby-invite-password" class="lobby-invite__password" hidden></p>
+      <p id="lobby-invite-lead" class="lobby-lead"></p>
+      <label class="lobby-field__label" for="lobby-invite-url">Lobby link</label>
+      <div class="lobby-invite__row">
+        <input id="lobby-invite-url" class="lobby-invite__link" type="text" readonly />
+        <button type="button" id="lobby-invite-copy" class="game-btn game-btn--secondary">Copy link</button>
+      </div>
+      <p id="lobby-invite-status" class="lobby-invite__status" role="status" aria-live="polite"></p>
+    </div>
   </section>
 
-  <section class="game-panel">
-    <h3 class="game-subtitle">Lobby chat</h3>
-    <div id="chat-log" class="game-chat-log" aria-live="polite" aria-relevant="additions"></div>
+  <section id="lobby-chat" class="game-panel lobby-chat" aria-labelledby="chat-heading" hidden>
+    <h2 id="chat-heading" class="game-subtitle">Lobby chat</h2>
+    <p id="chat-empty" class="lobby-lead" hidden>No messages yet.</p>
+    <div id="chat-log" class="game-chat-log" role="log" aria-relevant="additions" aria-label="Lobby chat history" tabindex="0"></div>
     <form id="chat-form" class="game-chat-form">
-      <input name="content" type="text" maxlength="4000" placeholder="Message…" aria-label="Message" />
-      <button type="submit" class="game-btn game-btn--primary">Send</button>
+      <label class="visually-hidden" for="chat-input">Message</label>
+      <input id="chat-input" name="content" type="text" maxlength="4000" placeholder="Message…" autocomplete="off" />
+      <button type="submit" id="chat-send" class="game-btn game-btn--primary">
+        <span id="chat-send-label">Send</span>
+      </button>
     </form>
+    <p id="chat-error" class="lobby-field__error" role="alert" hidden></p>
   </section>
+
+  <dialog id="leave-dialog" class="lobby-dialog" aria-labelledby="leave-dialog-title" aria-describedby="leave-dialog-text">
+    <h2 id="leave-dialog-title">Leave this lobby?</h2>
+    <p id="leave-dialog-text"></p>
+    <form method="dialog" class="lobby-dialog__actions">
+      <button type="submit" class="game-btn game-btn--secondary" value="cancel">Stay</button>
+      <button type="submit" class="game-btn game-btn--primary" value="leave">Leave lobby</button>
+    </form>
+  </dialog>
 </div>
-<script>
-(function () {
-  const parts = location.pathname.split("/").filter(Boolean);
-  const lobbyId = parts[parts.length - 1];
-  const API = "/api/fools/lobbies/" + lobbyId + "/";
-  let lastState = null;
-  let profile = null;
-  let profileReady = false;
-  let lobbyWs = null;
-  let lobbyWsGeneration = 0;
-  /** Avoid double navigation when host uses Start and render runs from the same tick. */
-  let navigatedToGame = false;
+{% endblock %}
 
-  function uidStr() {
-    return profile && profile.id != null ? String(profile.id) : "";
-  }
-
-  /** Compare user ids from API (string/int, optional UUID hyphen/case differences). */
-  function uuidEq(a, b) {
-    if (a == null || b == null) return false;
-    var na = String(a).toLowerCase().replace(/-/g, "");
-    var nb = String(b).toLowerCase().replace(/-/g, "");
-    return na === nb;
-  }
-
-  function disconnectLobbyWs() {
-    if (lobbyWs) {
-      try { lobbyWs.close(); } catch (_) {}
-      lobbyWs = null;
-      lobbyWsGeneration += 1;
-    }
-  }
-
-  function ensureLobbyWs() {
-    if (!profileReady || !lastState) return;
-    var uid = uidStr();
-    if (!uid) return;
-    var me = lastState.players.find(function (p) { return uuidEq(p.user_id, uid); });
-    if (!me) {
-      disconnectLobbyWs();
-      return;
-    }
-    if (lobbyWs && (lobbyWs.readyState === WebSocket.OPEN || lobbyWs.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-    disconnectLobbyWs();
-    var gen = lobbyWsGeneration;
-    var proto = location.protocol === "https:" ? "wss:" : "ws:";
-    var socket = new WebSocket(proto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
-    lobbyWs = socket;
-    socket.onmessage = function () {
-      if (gen !== lobbyWsGeneration) return;
-      refresh();
-      loadChat().catch(function (err) {
-        document.getElementById("err").textContent = err.message || String(err);
-      });
-    };
-  }
-
-  /** When the host starts the table, only they get `location` from the Start handler; everyone else
-   *  relies on WS + refresh. Send seated players (status `playing`) straight to the table. */
-  function maybeRedirectToActiveGame(L) {
-    if (navigatedToGame) return;
-    var ag = L.active_game_id;
-    if (!ag || !profileReady) return;
-    var uid = uidStr();
-    if (!uid) return;
-    var me = L.players.find(function (p) { return uuidEq(p.user_id, uid); });
-    if (!me || me.status !== "playing") return;
-    if (uuidEq(L.owner_id, uid)) return;
-    navigatedToGame = true;
-    location.href = "/fools/play/" + ag + "/";
-  }
-
-  function csrf() {
-    const m = document.cookie.match(/csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : "";
-  }
-  async function api(method, url, body) {
-    const opts = { method, credentials: "same-origin", headers: {} };
-    if (body !== undefined) {
-      opts.headers["Content-Type"] = "application/json";
-      opts.headers["X-CSRFToken"] = csrf();
-      opts.body = JSON.stringify(body);
-    }
-    const r = await fetch(url, opts);
-    const t = await r.text();
-    let data;
-    try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
-    if (!r.ok) {
-      const error = new Error((data && data.detail) || r.statusText || String(r.status));
-      error.data = data;
-      error.status = r.status;
-      throw error;
-    }
-    return data;
-  }
-
-  function showPrivateJoin(data) {
-    document.getElementById("lobby-title").textContent = (data && data.name) || "Private lobby";
-    document.getElementById("lobby-meta").textContent = "";
-    document.getElementById("players").innerHTML = "";
-    document.getElementById("lobby-banner").textContent = "";
-    document.getElementById("lobby-invite").hidden = true;
-    document.getElementById("btn-join").classList.add("game-btn--hidden");
-    document.getElementById("btn-leave").classList.add("game-btn--hidden");
-    document.getElementById("btn-ready").classList.add("game-btn--hidden");
-    document.getElementById("btn-start").classList.add("game-btn--hidden");
-    document.getElementById("private-join").hidden = false;
-    document.getElementById("private-join-password").focus();
-  }
-
-  function render(L) {
-    lastState = L;
-    const uid = uidStr();
-    document.getElementById("lobby-title").textContent = L.name;
-    document.getElementById("lobby-meta").textContent = JSON.stringify(L.settings, null, 2);
-    const ul = document.getElementById("players");
-    ul.innerHTML = "";
-    L.players.forEach(function (p) {
-      const li = document.createElement("li");
-      li.textContent = p.username + " — " + p.status;
-      ul.appendChild(li);
-    });
-
-    const me = uid ? L.players.find(function (p) { return uuidEq(p.user_id, uid); }) : null;
-    const isMember = !!me;
-    const currentUserReady = me ? me.status === "ready" : false;
-    const isOwner = !!(uid && uuidEq(L.owner_id, uid));
-    const waiting = L.status === "waiting";
-
-    document.getElementById("btn-join").classList.toggle("game-btn--hidden", isMember || L.status === "closed");
-    document.getElementById("btn-leave").classList.toggle("game-btn--hidden", !isMember || L.status === "closed");
-
-    const br = document.getElementById("btn-ready");
-    br.classList.toggle("game-btn--hidden", !isMember || !waiting || L.status === "closed");
-    br.textContent = currentUserReady ? "Not ready" : "Ready";
-
-    const btnStart = document.getElementById("btn-start");
-    btnStart.classList.toggle("game-btn--hidden", !isOwner || !waiting || L.status === "closed");
-    btnStart.disabled = !L.can_start;
-    btnStart.title = L.can_start ? "" : "At least two players must click Ready.";
-
-    const invite = document.getElementById("lobby-invite");
-    const showInvite = !!(L.is_private && isMember);
-    invite.hidden = !showInvite;
-    if (showInvite) {
-      document.getElementById("lobby-invite-url").value = location.href;
-    }
-    document.getElementById("private-join").hidden = true;
-
-    const ban = document.getElementById("lobby-banner");
-    if (L.status === "closed") {
-      ban.textContent = "This lobby is closed. You can open another from the list.";
-      ban.className = "game-banner game-banner--muted";
-    } else if (waiting) {
-      if (L.can_start && isOwner) {
-        ban.textContent = "All set — press «Start game» when you are ready to deal.";
-        ban.className = "game-banner game-banner--ok";
-      } else if (L.can_start && !isOwner) {
-        ban.textContent = "Everyone is ready. Waiting for the host to start.";
-        ban.className = "game-banner game-banner--ok";
-      } else {
-        ban.textContent = "Ready players: " + (L.ready_count || 0) + " of " + (L.active_player_count || 0) +
-          ". Need at least 2 ready to start.";
-        ban.className = "game-banner game-banner--wait";
-      }
-    } else {
-      ban.textContent = "";
-      ban.className = "game-banner";
-    }
-
-    const ag = L.active_game_id;
-    const act = document.getElementById("actions");
-    act.innerHTML = "";
-    if (ag) {
-      const a = document.createElement("a");
-      a.href = "/fools/play/" + ag + "/";
-      a.textContent = "Enter active game";
-      act.appendChild(a);
-    }
-
-    maybeRedirectToActiveGame(L);
-    ensureLobbyWs();
-  }
-
-  async function refresh() {
-    try {
-      const L = await api("GET", API);
-      render(L);
-    } catch (e) {
-      if (e.data && e.data.code === "password_required") {
-        showPrivateJoin(e.data);
-        return;
-      }
-      document.getElementById("err").textContent = e.message;
-    }
-  }
-  async function loadChat() {
-    const rows = await api("GET", API + "messages/");
-    const log = document.getElementById("chat-log");
-    log.innerHTML = "";
-    rows.forEach(function (m) {
-      const d = document.createElement("div");
-      d.className = "game-chat-line";
-      d.textContent = m.username + ": " + m.content;
-      log.appendChild(d);
-    });
-    log.scrollTop = log.scrollHeight;
-  }
-  document.getElementById("lobby-invite-copy").addEventListener("click", async function () {
-    const input = document.getElementById("lobby-invite-url");
-    const status = document.getElementById("lobby-invite-status");
-    input.focus();
-    input.select();
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(input.value);
-      } else {
-        document.execCommand("copy");
-      }
-      status.textContent = "Link copied.";
-    } catch (ignore) {
-      status.textContent = "Select the link and copy it.";
-    }
-  });
-  document.getElementById("private-join").addEventListener("submit", async function (ev) {
-    ev.preventDefault();
-    const error = document.getElementById("private-join-error");
-    const input = document.getElementById("private-join-password");
-    error.hidden = true;
-    error.textContent = "";
-    try {
-      const L = await api("POST", API + "join/", { password: input.value });
-      input.value = "";
-      render(L);
-    } catch (e) {
-      error.hidden = false;
-      error.textContent = (e.data && e.data.detail) || e.message || "Could not join this lobby.";
-      input.setAttribute("aria-invalid", "true");
-      input.focus();
-    }
-  });
-  document.getElementById("btn-join").addEventListener("click", async function () {
-    document.getElementById("err").textContent = "";
-    try {
-      await api("POST", API + "join/", {});
-      await refresh();
-    } catch (e) {
-      document.getElementById("err").textContent = e.message;
-    }
-  });
-  document.getElementById("btn-leave").addEventListener("click", async function () {
-    document.getElementById("err").textContent = "";
-    try {
-      disconnectLobbyWs();
-      await api("POST", API + "leave/", {});
-      location.href = "/fools/";
-    } catch (e) {
-      document.getElementById("err").textContent = e.message;
-    }
-  });
-  document.getElementById("btn-ready").addEventListener("click", async function () {
-    document.getElementById("err").textContent = "";
-    if (!lastState) return;
-    const uid = uidStr();
-    const me = lastState.players.find(function (p) { return uuidEq(p.user_id, uid); });
-    var nextReady = !(me && me.status === "ready");
-    try {
-      const L = await api("POST", API + "ready/", { ready: nextReady });
-      render(L);
-    } catch (e) {
-      document.getElementById("err").textContent = e.message;
-    }
-  });
-  document.getElementById("btn-start").addEventListener("click", async function () {
-    document.getElementById("err").textContent = "";
-    try {
-      const G = await api("POST", API + "start/", {});
-      navigatedToGame = true;
-      location.href = "/fools/play/" + G.id + "/";
-    } catch (e) {
-      document.getElementById("err").textContent = e.message;
-    }
-  });
-  document.getElementById("chat-form").addEventListener("submit", async function (ev) {
-    ev.preventDefault();
-    const inp = ev.target.content;
-    const content = inp.value.trim();
-    if (!content) return;
-    try {
-      await api("POST", API + "messages/", { content: content });
-      inp.value = "";
-      await loadChat();
-    } catch (e) {
-      document.getElementById("err").textContent = e.message;
-    }
-  });
-  api("GET", "/api/accounts/auth/profile/")
-    .then(function (p) {
-      profile = p;
-      profileReady = true;
-    })
-    .then(function () { return refresh(); })
-    .then(loadChat)
-    .catch(function (e) {
-      document.getElementById("err").textContent = e.message;
-    });
-})();
-</script>
+{% block extra_js %}
+<script src="{% static 'fools/js/lobby_detail.js' %}?v={{ asset_lobby_detail_js_v }}"></script>
 {% endblock %}

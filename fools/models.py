@@ -6,7 +6,9 @@ the online multiplayer Durak card game.
 """
 
 import uuid
+
 from django.db import models
+from django.utils import timezone
 
 class CardSuit(models.Model):
     """Card suit model representing playing card suits (Hearts, Diamonds, etc.).
@@ -110,20 +112,26 @@ class Lobby(models.Model):
         return current_players >= self.settings.max_players
 
     def can_start_game(self):
-        """Check if the lobby has enough ready players to start a game.
-        
+        """Check if the owner may deal a game from this lobby.
+
+        The lobby must still be waiting. Without bots, at least two members
+        must be ready. With bots, every human still seated must be ready and
+        the table must have room for two. Bots are not part of that count, so
+        one ready human is enough only when nobody else is waiting.
+
         Returns:
-            bool: True if there are at least 2 ready players and lobby is waiting.
+            bool: True when a deal is allowed.
         """
-        if self.status != 'waiting':
+        if self.status != "waiting":
             return False
-        ready_players = self.players.filter(status='ready').count()
-        if ready_players >= 2:
-            return True
         settings = getattr(self, "settings", None)
-        if settings is None or not settings.fill_with_bots:
-            return False
-        return ready_players >= 1 and settings.max_players >= 2
+        if settings is not None and settings.fill_with_bots:
+            humans = self.players.filter(user__is_bot=False).exclude(status="left")
+            human_count = humans.count()
+            if human_count < 1 or settings.max_players < 2:
+                return False
+            return humans.filter(status="ready").count() == human_count
+        return self.players.filter(status="ready").count() >= 2
 
     def get_active_players(self):
         """Get all active players in the lobby.
@@ -197,7 +205,8 @@ class LobbyPlayer(models.Model):
     
     Represents a player's membership in a specific lobby, tracking their
     current status and readiness to play. Handles the player lifecycle
-    from joining to leaving the lobby.
+    from joining to leaving the lobby. ``joined_at`` is when they last took
+    a seat, including a return after leaving.
     
     """
 
@@ -207,6 +216,7 @@ class LobbyPlayer(models.Model):
     status = models.CharField(max_length=10,
                               choices=[('waiting', 'Waiting'), ('ready', 'Ready'), ('playing', 'Playing'),
                                        ('left', 'Left')])
+    joined_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         """Return string representation of the lobby player.

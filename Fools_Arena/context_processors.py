@@ -23,4 +23,7 @@ def asset_versions(_request):
         "asset_lobby_js_v": _mtime(
             static_root / "fools" / "static" / "fools" / "js" / "lobby_list.js"
         ),
+        "asset_lobby_detail_js_v": _mtime(
+            static_root / "fools" / "static" / "fools" / "js" / "lobby_detail.js"
+        ),
     }

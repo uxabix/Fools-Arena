@@ -1402,8 +1402,9 @@
   var CARD_FACE_RATIO = 1050 / 750;
 
   /**
-   * Largest turn of an outer phone card, in degrees.
+   * Largest turn of an outer card, in degrees.
    * A longer hand uses a flatter arc so the corner index stays on screen.
+   * Wide screens use this once their deeper arc no longer fits the tray.
    * @param {number} count
    * @return {number}
    */
@@ -1431,29 +1432,19 @@
   }
 
   /**
-   * Fan geometry for one hand.
-   * Phones keep a readable card width and overlap neighbors more as the hand grows.
-   * Wide screens keep the fixed arc.
-   * @param {HTMLElement} inner
+   * Pack cards into `full` pixels at one outer rotation.
+   * Overlap grows first. Width drops only after a neighbor would cover the index.
+   * @param {number} full
    * @param {number} count
-   * @return {{rotStep:number, rise:number, lift:number, xStep:number, key:string}}
+   * @param {number} preferred
+   * @param {number} minW
+   * @param {number} edge Outer rotation, in degrees.
+   * @param {number} lightOverlap Overlap used while the row still has room.
+   * @return {{cardW:number, overlap:number, inset:number, edge:number}}
    */
-  function handFanMetrics(inner, count) {
-    if (!PHONE_HAND.matches) {
-      inner.style.removeProperty("--hand-card-w");
-      inner.style.removeProperty("--hand-overlap");
-      inner.style.removeProperty("--hand-inset");
-      return { rotStep: 7.25, rise: 16, lift: 3, xStep: 0.85, key: "wide" };
-    }
-    var full = inner.clientWidth;
-    if (!full || count < 1) {
-      return { rotStep: 6, rise: 8, lift: 1.5, xStep: 0, key: "phone" };
-    }
-    var preferred = 72;
-    var minW = 46;
+  function packHand(full, count, preferred, minW, edge, lightOverlap) {
     var cardW = preferred;
     var gaps = count - 1;
-    var edge = phoneHandEdgeDegrees(count);
     var inset = handFanInset(cardW, edge, count);
     var usable = Math.max(1, full - inset * 2);
     var overlap = 0;
@@ -1462,39 +1453,104 @@
       var step = (usable - cardW) / gaps;
       if (step < minStep) {
         cardW = Math.max(minW, Math.min(preferred, usable - gaps * minStep));
-        edge = phoneHandEdgeDegrees(count);
         inset = handFanInset(cardW, edge, count);
         usable = Math.max(1, full - inset * 2);
         step = (usable - cardW) / gaps;
       }
-      var light = count <= 4 ? 8 : 12;
-      if (cardW + gaps * (cardW - light) <= usable) overlap = light;
+      if (cardW + gaps * (cardW - lightOverlap) <= usable) overlap = lightOverlap;
       else overlap = Math.max(0, cardW - step);
     } else {
       cardW = Math.min(preferred, usable);
     }
-    edge = phoneHandEdgeDegrees(count);
     inset = handFanInset(cardW, edge, count);
     usable = Math.max(1, full - inset * 2);
     if (gaps > 0) {
       var row = cardW + gaps * (cardW - overlap);
       if (row > usable) overlap += (row - usable) / gaps;
     }
-    cardW = Math.floor(cardW * 10) / 10;
-    overlap = Math.ceil(overlap * 10) / 10;
+    return { cardW: cardW, overlap: overlap, inset: inset, edge: edge };
+  }
+
+  /**
+   * True when every card is still full size and only lightly overlapped.
+   * @param {{cardW:number, overlap:number}} packed
+   * @param {number} preferred
+   * @param {number} light
+   * @return {boolean}
+   */
+  function handPackComfortable(packed, preferred, light) {
+    return packed.cardW >= preferred - 0.5 && packed.overlap <= light + 0.5;
+  }
+
+  /**
+   * Write the pack onto the fan and return the per-card curve.
+   * @param {HTMLElement} inner
+   * @param {number} count
+   * @param {{cardW:number, overlap:number, inset:number, edge:number}} packed
+   * @param {string} prefix
+   * @return {{rotStep:number, rise:number, lift:number, xStep:number, key:string}}
+   */
+  function applyHandPack(inner, count, packed, prefix) {
+    var cardW = Math.floor(packed.cardW * 10) / 10;
+    var overlap = Math.ceil(packed.overlap * 10) / 10;
+    var inset = packed.inset;
+    var gaps = count - 1;
+    var mid = gaps / 2;
+    var rotStep = mid > 0 ? packed.edge / mid : 0;
+    var scale = rotStep / 7.25;
     inner.style.setProperty("--hand-card-w", cardW.toFixed(1) + "px");
     inner.style.setProperty("--hand-overlap", overlap ? (-overlap).toFixed(1) + "px" : "0px");
     inner.style.setProperty("--hand-inset", inset.toFixed(1) + "px");
-    var mid = gaps / 2;
-    var rotStep = mid > 0 ? edge / mid : 0;
-    var scale = rotStep / 7.25;
     return {
       rotStep: rotStep,
       rise: 16 * scale,
       lift: 3 * scale,
       xStep: 0,
-      key: ["p", cardW.toFixed(1), overlap.toFixed(1), rotStep.toFixed(2), String(inset)].join(":"),
+      key: [prefix, cardW.toFixed(1), overlap.toFixed(1), rotStep.toFixed(2), String(inset)].join(":"),
     };
+  }
+
+  /**
+   * Fan geometry for one hand.
+   * Both layouts keep a preferred card width and overlap neighbors more as the hand grows.
+   * A wide screen starts from its deeper arc, then flattens, overlaps, and narrows the
+   * way a phone already does, so a long hand stays inside the tray.
+   * @param {HTMLElement} inner
+   * @param {number} count
+   * @return {{rotStep:number, rise:number, lift:number, xStep:number, key:string}}
+   */
+  function handFanMetrics(inner, count) {
+    var phone = PHONE_HAND.matches;
+    var full = inner.clientWidth;
+    if (!full || count < 1) {
+      if (!phone) {
+        inner.style.removeProperty("--hand-card-w");
+        inner.style.removeProperty("--hand-overlap");
+        inner.style.removeProperty("--hand-inset");
+      }
+      return phone
+        ? { rotStep: 6, rise: 8, lift: 1.5, xStep: 0, key: "phone" }
+        : { rotStep: 7.25, rise: 16, lift: 3, xStep: 0.85, key: "wide" };
+    }
+    var preferred = phone ? 72 : 96;
+    var minW = phone ? 46 : 64;
+    var light = count <= 4 ? 8 : (phone ? 12 : 16);
+    var edge = phoneHandEdgeDegrees(count);
+    if (!phone && count > 1) edge = 7.25 * (count - 1) / 2;
+    var packed = packHand(full, count, preferred, minW, edge, light);
+    if (!phone && !handPackComfortable(packed, preferred, light)) {
+      var flat = phoneHandEdgeDegrees(count);
+      var guard = 0;
+      while (edge > flat && guard < 12 && !handPackComfortable(packed, preferred, light)) {
+        edge = Math.max(flat, edge * 0.7);
+        packed = packHand(full, count, preferred, minW, edge, light);
+        guard += 1;
+      }
+      if (!handPackComfortable(packed, preferred, light)) {
+        packed = packHand(full, count, preferred, minW, flat, light);
+      }
+    }
+    return applyHandPack(inner, count, packed, phone ? "p" : "w");
   }
 
   /**
@@ -1964,6 +2020,7 @@
   var recentActions = [];
   var badgeTimer = null;
   var resultFocused = false;
+  var resultDismissed = false;
   var confirmAgain = false;
   var handDirty = false;
   var inboundMine = null;
@@ -2127,11 +2184,57 @@
     });
   }
 
+  /**
+   * Mark one ending action as the main step or a secondary one.
+   * @param {?Element} el
+   * @param {boolean} primary
+   */
+  function markResultAction(el, primary) {
+    if (!el) return;
+    el.classList.toggle("game-btn--primary", !!primary);
+    el.classList.toggle("game-btn--secondary", !primary);
+  }
+
+  /**
+   * Show the ending card, or the corner control that brings it back.
+   * @param {boolean} open
+   */
+  function setResultOpen(open) {
+    var panel = document.getElementById("play-result");
+    var restore = document.getElementById("play-result-restore");
+    var finished = !!(state && state.status === "finished");
+    if (panel) panel.hidden = !open;
+    if (restore) restore.hidden = !finished || open;
+  }
+
+  function wireResultPanel() {
+    var hide = document.getElementById("play-result-table");
+    var restore = document.getElementById("play-result-restore");
+    if (hide && hide.dataset.wired !== "1") {
+      hide.dataset.wired = "1";
+      hide.addEventListener("click", function () {
+        resultDismissed = true;
+        setResultOpen(false);
+        if (restore) restore.focus();
+      });
+    }
+    if (restore && restore.dataset.wired !== "1") {
+      restore.dataset.wired = "1";
+      restore.addEventListener("click", function () {
+        resultDismissed = false;
+        setResultOpen(true);
+        var title = document.getElementById("play-result-title");
+        if (title) title.focus();
+      });
+    }
+  }
+
   function renderResult(uid) {
     var panel = document.getElementById("play-result");
     if (!panel) return;
     if (!state || state.status !== "finished") {
-      panel.hidden = true;
+      resultDismissed = false;
+      setResultOpen(false);
       return;
     }
     var title = document.getElementById("play-result-title");
@@ -2144,22 +2247,34 @@
       });
     }
     var mine = state.loser_id && String(state.loser_id) === String(uid);
-    if (title) title.textContent = mine ? "You are the fool" : "Game over";
+    if (title) {
+      if (mine) title.textContent = "You lost!";
+      else if (loser) title.textContent = "You won!";
+      else title.textContent = "Game over";
+    }
     if (text) {
-      if (mine) text.textContent = "You lost this game. Everyone else is out.";
-      else if (loser) text.textContent = loser.username + " is the fool.";
+      if (mine) text.textContent = "You are the fool this game.";
+      else if (loser) text.textContent = "The fool this game is " + loser.username + ".";
       else text.textContent = "This game has finished.";
-      if (!state.can_rematch) {
-        text.textContent += " The host can deal another game for everyone still in the lobby.";
-      }
+    }
+    var note = document.getElementById("play-result-note");
+    if (note) {
+      note.hidden = !!state.can_rematch;
+      note.textContent = state.can_rematch
+        ? ""
+        : "The host can deal another game for everyone still in the lobby.";
     }
     if (lobby) {
       lobby.href = state.lobby_id ? "/fools/lobbies/" + state.lobby_id + "/" : "/fools/";
     }
     var again = document.getElementById("play-result-again");
-    if (again) again.hidden = !state.can_rematch;
-    panel.hidden = false;
-    if (!resultFocused && title) {
+    var rematch = !!state.can_rematch;
+    if (again) again.hidden = !rematch;
+    markResultAction(again, rematch);
+    markResultAction(lobby, !rematch);
+    panel.classList.toggle("is-rematch", rematch);
+    setResultOpen(!resultDismissed);
+    if (!resultDismissed && !resultFocused && title) {
       resultFocused = true;
       title.focus();
     }
@@ -2757,6 +2872,7 @@
     paintSortButton();
     wireSort();
     wireRematch();
+    wireResultPanel();
     var seatLayout = window.matchMedia("(min-width: 900px)");
     seatLayout.addEventListener("change", function () {
       if (state) render(state.table || []);

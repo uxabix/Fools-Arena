@@ -1,8 +1,10 @@
 """Bots: lowest-card strategy, seating, and a primitive transfer."""
 
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
+from django.utils import timezone
 
 from fools.bots.actions import PlayCards, TakeCards, TransferAttack
 from fools.bots.lowest import LowestCardStrategy
@@ -13,6 +15,7 @@ from fools.services import (
     GameError,
     create_lobby,
     abandon_game,
+    join_lobby,
     leave_lobby,
     set_ready,
     start_game,
@@ -324,6 +327,62 @@ def test_last_human_leaving_closes_the_lobby(test_user, durak_deck_36):
     assert game.status == "finished"
     assert game.loser_id == test_user.id
     assert not lobby.players.exclude(status="left").exists()
+
+
+@pytest.mark.django_db
+def test_bots_wait_until_every_human_is_ready(test_user, second_user, durak_deck_36):
+    """A waiting human blocks the deal. Bots do not take that person's seat."""
+    lobby = create_lobby(
+        test_user,
+        "wait-for-both",
+        is_private=False,
+        max_players=4,
+        fill_with_bots=True,
+    )
+    join_lobby(lobby, second_user)
+    set_ready(lobby, test_user, True)
+    assert lobby.can_start_game() is False
+    with pytest.raises(GameError) as exc:
+        start_game(lobby, test_user)
+    assert exc.value.code == "precondition"
+    assert lobby.players.filter(user=second_user, status="waiting").exists()
+    assert not lobby.players.filter(user__is_bot=True).exclude(status="left").exists()
+
+    set_ready(lobby, second_user, True)
+    assert lobby.can_start_game() is True
+    game = start_game(lobby, test_user)
+    assert game.players.filter(user__is_bot=False).count() == 2
+    assert game.players.filter(user__is_bot=True).count() == 2
+
+
+@pytest.mark.django_db
+def test_set_ready_refuses_a_lobby_that_is_not_waiting(test_user, second_user, durak_deck_36):
+    """Ready cannot be toggled once the lobby is already playing."""
+    lobby = create_lobby(test_user, "no-ready", is_private=False, max_players=2)
+    join_lobby(lobby, second_user)
+    set_ready(lobby, test_user, True)
+    set_ready(lobby, second_user, True)
+    start_game(lobby, test_user)
+    with pytest.raises(GameError) as exc:
+        set_ready(lobby, second_user, False)
+    assert exc.value.code == "state"
+    assert lobby.players.get(user=second_user).status == "playing"
+
+
+@pytest.mark.django_db
+def test_owner_passes_to_the_earliest_human(test_user, user_factory):
+    """The next host is who sat down first, not whose name comes first."""
+    early = user_factory(username="zzz_early")
+    late = user_factory(username="aaa_late")
+    lobby = create_lobby(test_user, "succession", is_private=False, max_players=4)
+    join_lobby(lobby, early)
+    join_lobby(lobby, late)
+    now = timezone.now()
+    LobbyPlayer.objects.filter(lobby=lobby, user=early).update(joined_at=now - timedelta(minutes=5))
+    LobbyPlayer.objects.filter(lobby=lobby, user=late).update(joined_at=now)
+    leave_lobby(lobby, test_user)
+    lobby.refresh_from_db()
+    assert lobby.owner_id == early.id
 
 
 @pytest.mark.django_db

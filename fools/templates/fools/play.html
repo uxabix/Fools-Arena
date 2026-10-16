@@ -17,15 +17,19 @@
     <p id="play-link" class="play-link" role="status" hidden></p>
   </header>
 
-  <section id="play-result" class="play-result" hidden aria-labelledby="play-result-title">
-    <h2 id="play-result-title" tabindex="-1">Game over</h2>
-    <p id="play-result-text"></p>
-    <div class="play-result__actions">
-      <button type="button" id="play-result-again" class="game-btn game-btn--primary" hidden>Play again</button>
-      <a id="play-result-lobby" class="game-btn game-btn--secondary" href="/fools/">Back to lobby</a>
-      <a class="game-btn game-btn--secondary" href="/fools/">Find a game</a>
+  <section id="play-result" class="play-result" hidden role="dialog" aria-modal="false" aria-labelledby="play-result-title" aria-describedby="play-result-text">
+    <div class="play-result__card">
+      <h2 id="play-result-title" tabindex="-1">Game over</h2>
+      <p id="play-result-text"></p>
+      <p id="play-result-note" class="play-result__note" hidden></p>
+      <div class="play-result__actions">
+        <button type="button" id="play-result-again" class="game-btn game-btn--primary" hidden>Play again</button>
+        <a id="play-result-lobby" class="game-btn game-btn--secondary" href="/fools/">Back to lobby</a>
+      </div>
+      <button type="button" id="play-result-table" class="play-result__table">Show table</button>
+      <a class="play-result__find" href="/fools/">Find a game</a>
+      <p id="play-result-error" class="text-error" hidden></p>
     </div>
-    <p id="play-result-error" class="text-error" hidden></p>
   </section>
 
   <div class="play-classic-layout">
@@ -37,6 +41,7 @@
         <div class="play-ring__main">
           <div id="seat-north" class="play-seat-bin play-seat-bin--north"></div>
           <div class="play-felt">
+      <button type="button" id="play-result-restore" class="game-btn game-btn--secondary play-result-restore" hidden aria-controls="play-result">Show result</button>
       <div class="play-felt__inner">
         <div class="play-piles">
           <div id="deck-trump-corner" class="play-deck-trump" aria-label="Deck"></div>
