@@ -56,6 +56,7 @@ class MessageAdmin(admin.ModelAdmin):
     list_display_links = ('message_preview',)
     
     list_filter = (
+        'kind',
         'sent_at',
         ('sender', admin.RelatedOnlyFieldListFilter),
         ('chat', admin.RelatedOnlyFieldListFilter),
@@ -89,7 +90,7 @@ class MessageAdmin(admin.ModelAdmin):
             'description': 'Core message content and identification.'
         }),
         ('Chat', {
-            'fields': ('sender', 'chat'),
+            'fields': ('sender', 'chat', 'kind'),
             'description': 'Message context (private, lobby, global, or group chat).'
         }),
         ('Message Analysis', {

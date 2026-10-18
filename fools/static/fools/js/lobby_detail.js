@@ -1,5 +1,5 @@
 /**
- * Lobby room: seats, readiness, invite link, and lobby chat.
+ * Lobby room: seats, readiness, game settings, invite link, and lobby chat.
  * State comes from the lobby REST API. Live updates arrive on the lobby socket.
  */
 (function () {
@@ -19,6 +19,7 @@
   var connectionActions = document.getElementById("lobby-connection-actions");
   var retryBtn = document.getElementById("lobby-retry");
   var connectionBack = document.getElementById("lobby-connection-back");
+  var settingsNotice = document.getElementById("settings-notice");
   var settingsEl = document.getElementById("lobby-settings");
   var roster = document.getElementById("lobby-roster");
   var playersEl = document.getElementById("players");
@@ -33,6 +34,20 @@
   var joinBtn = document.getElementById("btn-join");
   var joinLabel = document.getElementById("btn-join-label");
   var joinError = document.getElementById("join-error");
+  var settingsBtn = document.getElementById("btn-settings");
+  var settingsLabel = document.getElementById("btn-settings-label");
+  var settingsDialog = document.getElementById("settings-dialog");
+  var settingsForm = document.getElementById("settings-form");
+  var settingsPlayers = document.getElementById("settings-max-players");
+  var settingsDeck = document.getElementById("settings-card-count");
+  var settingsNeighbors = document.getElementById("settings-neighbors");
+  var settingsTransfer = document.getElementById("settings-transfer");
+  var settingsBots = document.getElementById("settings-bots");
+  var settingsSignals = document.getElementById("settings-signals");
+  var settingsFormError = document.getElementById("settings-form-error");
+  var settingsCancel = document.getElementById("settings-cancel");
+  var settingsSave = document.getElementById("settings-save");
+  var settingsSaveLabel = document.getElementById("settings-save-label");
   var readyBtn = document.getElementById("btn-ready");
   var readyLabel = document.getElementById("btn-ready-label");
   var readyError = document.getElementById("ready-error");
@@ -69,6 +84,8 @@
   var lastState = null;
   var previousStatuses = {};
   var lastReadyCount = null;
+  var lastSettingsKey = null;
+  var OPENING_HAND = 6;
   var pending = "";
   var chatLoaded = false;
   var navigatedToGame = false;
@@ -174,7 +191,12 @@
   function showAction(button, error, visible) {
     button.classList.toggle("game-btn--hidden", !visible);
     button.closest(".lobby-action").hidden = !visible;
-    if (!visible) clearError(error);
+    if (!visible && error) clearError(error);
+  }
+
+  function showButton(button, visible) {
+    button.classList.toggle("game-btn--hidden", !visible);
+    button.closest(".lobby-action").hidden = !visible;
   }
 
   function badge(text, className) {
@@ -314,7 +336,7 @@
     }, 1200);
   }
 
-  function renderPlayers(lobby, seated, ready, max) {
+  function renderPlayers(lobby, seated, ready, max, quiet) {
     var announcements = [];
     var nextStatuses = {};
     playersEl.innerHTML = "";
@@ -325,9 +347,11 @@
       li.className = "lobby-player";
       if (previousStatuses[key] && previousStatuses[key] !== player.status) {
         markUpdated(li);
-        if (player.status === "ready") announcements.push(player.username + " is ready.");
-        else if (player.status === "waiting") announcements.push(player.username + " is waiting.");
-        else if (player.status === "playing") announcements.push(player.username + " is in the game.");
+        if (!quiet) {
+          if (player.status === "ready") announcements.push(player.username + " is ready.");
+          else if (player.status === "waiting") announcements.push(player.username + " is waiting.");
+          else if (player.status === "playing") announcements.push(player.username + " is in the game.");
+        }
       }
       var identity = document.createElement("div");
       identity.className = "lobby-player__identity";
@@ -361,6 +385,29 @@
     if (announcements.length) readyLive.textContent = announcements.join(" ");
   }
 
+  function settingsKey(lobby) {
+    var settings = lobby.settings || {};
+    return [
+      settings.max_players,
+      settings.card_count,
+      settings.is_transferable ? 1 : 0,
+      settings.neighbor_throw_only ? 1 : 0,
+      settings.allow_jokers ? 1 : 0,
+      settings.fill_with_bots ? 1 : 0,
+      settings.share_hand_signals === false ? 0 : 1,
+      settings.turn_time_limit || 0,
+    ].join("|");
+  }
+
+  function announceSettingsChange() {
+    settingsNotice.hidden = false;
+    settingsNotice.textContent = "";
+    window.requestAnimationFrame(function () {
+      settingsNotice.textContent = "Game settings changed. Readiness was cleared.";
+    });
+    markUpdated(settingsEl);
+  }
+
   function render(lobby) {
     lastState = lobby;
     var me = findMe(lobby);
@@ -371,13 +418,18 @@
     var ready = lobby.ready_count || 0;
     var max = (lobby.settings && lobby.settings.max_players) || 0;
     var currentUserReady = !!(me && me.status === "ready");
+    var nextKey = settingsKey(lobby);
+    var settingsChanged = lastSettingsKey !== null && nextKey !== lastSettingsKey;
+    lastSettingsKey = nextKey;
 
     titleEl.textContent = lobby.name || "Lobby";
     document.title = titleEl.textContent + " — Fools Arena";
     privateForm.hidden = true;
     fillSettings(lobby, seated);
+    if (settingsChanged) announceSettingsChange();
     roster.hidden = false;
-    renderPlayers(lobby, seated, ready, max);
+    renderPlayers(lobby, seated, ready, max, settingsChanged);
+    if (settingsChanged) readyLive.textContent = "";
 
     joinPrompt.hidden = !!me || closed;
     memberNote.hidden = !me || closed;
@@ -387,12 +439,17 @@
     startHint.hidden = !hint || closed;
     startHint.textContent = hint;
 
+    var canEdit = isOwner && waiting && !lobby.active_game_id;
     showAction(joinBtn, joinError, !me && !closed);
     showAction(leaveBtn, leaveError, !!me && !closed);
+    showButton(settingsBtn, canEdit);
     showAction(readyBtn, readyError, !!me && waiting);
     showAction(startBtn, startError, isOwner && waiting);
+    if (settingsDialog.open && !canEdit) settingsDialog.close();
 
     if (pending !== "join") joinLabel.textContent = "Join this lobby";
+    if (pending !== "settings") settingsLabel.textContent = "Edit settings";
+    settingsBtn.disabled = pending === "settings";
     if (pending !== "ready") readyLabel.textContent = currentUserReady ? "Cancel ready" : "Ready";
     if (pending !== "start") startLabel.textContent = "Start game";
     if (pending !== "leave") leaveLabel.textContent = "Leave lobby";
@@ -452,6 +509,7 @@
     setConnection("clear");
     titleEl.textContent = (data && data.name) || "Private lobby";
     document.title = titleEl.textContent + " — Fools Arena";
+    settingsNotice.hidden = true;
     settingsEl.hidden = true;
     roster.hidden = true;
     joinPrompt.hidden = true;
@@ -462,6 +520,7 @@
     actionsEl.hidden = true;
     showAction(joinBtn, joinError, false);
     showAction(leaveBtn, leaveError, false);
+    showButton(settingsBtn, false);
     showAction(readyBtn, readyError, false);
     showAction(startBtn, startError, false);
     privateForm.hidden = false;
@@ -501,14 +560,15 @@
   }
 
   function messageNode(message) {
+    var system = message.kind === "system";
     var line = document.createElement("div");
-    line.className = "game-chat-line";
+    line.className = system ? "game-chat-line game-chat-line--system" : "game-chat-line";
     line.setAttribute("data-message-id", String(message.id));
     var meta = document.createElement("p");
     meta.className = "game-chat-line__meta";
     var name = document.createElement("span");
     name.className = "game-chat-line__name";
-    name.textContent = message.username || "Player";
+    name.textContent = system ? "System" : (message.username || "Player");
     meta.appendChild(name);
     var stamp = formatSentAt(message.sent_at);
     if (stamp) {
@@ -831,6 +891,198 @@
       chatInput.setAttribute("aria-invalid", "true");
       showError(chatError, errorText(error));
       chatInput.focus();
+    });
+  });
+
+  function settingsBody() {
+    return {
+      max_players: Number(settingsPlayers.value),
+      card_count: Number(settingsDeck.value),
+      neighbor_throw_only: settingsNeighbors.checked,
+      is_transferable: settingsTransfer.checked,
+      fill_with_bots: settingsBots.checked,
+      share_hand_signals: settingsSignals.checked,
+    };
+  }
+
+  function sameSettings(lobby, body) {
+    var settings = (lobby && lobby.settings) || {};
+    return Number(settings.max_players) === body.max_players &&
+      Number(settings.card_count) === body.card_count &&
+      !!settings.neighbor_throw_only === body.neighbor_throw_only &&
+      !!settings.is_transferable === body.is_transferable &&
+      !!settings.fill_with_bots === body.fill_with_bots &&
+      (settings.share_hand_signals !== false) === body.share_hand_signals;
+  }
+
+  function syncSettingsDeck() {
+    var players = Number(settingsPlayers.value);
+    var cards = Number(settingsDeck.value);
+    var limit = Math.floor(cards / OPENING_HAND);
+    var hint = document.getElementById("settings-max-players-hint");
+    if (hint && limit >= 2) {
+      hint.textContent = "2–" + Math.min(8, limit) + " for this deck. Each player is dealt 6 cards.";
+    }
+    if (limit >= 2) settingsPlayers.max = String(Math.min(8, limit));
+    if (!players || !cards || players <= limit) {
+      var slot = document.getElementById("settings-card-count-error");
+      if (slot && slot.getAttribute("data-deck-fit") === "1") {
+        setSettingsFieldError("card_count", "");
+        slot.removeAttribute("data-deck-fit");
+      }
+      return true;
+    }
+    setSettingsFieldError(
+      "card_count",
+      "A " + cards + "-card deck deals 6 cards to each player, so it seats at most " + limit + "."
+    );
+    document.getElementById("settings-card-count-error").setAttribute("data-deck-fit", "1");
+    return false;
+  }
+
+  function setSettingsFieldError(name, message) {
+    var field = settingsForm.querySelector('[data-field="' + name + '"]');
+    if (!field) {
+      setSettingsFormError(message);
+      return;
+    }
+    var input = field.querySelector("input, select");
+    var slot = field.querySelector(".lobby-field__error");
+    if (!slot) {
+      setSettingsFormError(message);
+      return;
+    }
+    if (!message) {
+      field.classList.remove("is-invalid");
+      if (input) input.removeAttribute("aria-invalid");
+      if (slot) {
+        slot.hidden = true;
+        slot.textContent = "";
+      }
+      return;
+    }
+    field.classList.add("is-invalid");
+    if (input) input.setAttribute("aria-invalid", "true");
+    if (slot) {
+      slot.hidden = false;
+      slot.textContent = message;
+    }
+  }
+
+  function setSettingsFormError(message) {
+    settingsFormError.hidden = !message;
+    settingsFormError.textContent = message || "";
+  }
+
+  function clearSettingsErrors() {
+    settingsForm.querySelectorAll(".is-invalid").forEach(function (field) {
+      field.classList.remove("is-invalid");
+    });
+    settingsForm.querySelectorAll("[aria-invalid]").forEach(function (input) {
+      input.removeAttribute("aria-invalid");
+    });
+    settingsForm.querySelectorAll(".lobby-field__error").forEach(function (slot) {
+      slot.hidden = true;
+      slot.textContent = "";
+    });
+  }
+
+  function settingsMessageOf(value) {
+    if (Array.isArray(value)) return value.join(" ");
+    if (value && typeof value === "object") return value.detail || "Could not save the settings.";
+    return value ? String(value) : "Could not save the settings.";
+  }
+
+  function applySettingsErrors(data) {
+    clearSettingsErrors();
+    if (!data || typeof data !== "object") {
+      setSettingsFormError(settingsMessageOf(data));
+      return;
+    }
+    var placed = false;
+    Object.keys(data).forEach(function (key) {
+      if (key === "detail" || key === "code" || key === "non_field_errors") return;
+      setSettingsFieldError(key, settingsMessageOf(data[key]));
+      placed = true;
+    });
+    if (data.non_field_errors) {
+      setSettingsFormError(settingsMessageOf(data.non_field_errors));
+      placed = true;
+    }
+    if (!placed && data.detail) setSettingsFormError(settingsMessageOf(data.detail));
+    var first = settingsForm.querySelector(".is-invalid input, .is-invalid select, #settings-form-error:not([hidden])");
+    if (first && first.focus) first.focus();
+  }
+
+  function fillSettingsForm(lobby) {
+    var settings = (lobby && lobby.settings) || {};
+    settingsPlayers.value = settings.max_players || 4;
+    settingsDeck.value = String(settings.card_count || 36);
+    settingsNeighbors.checked = !!settings.neighbor_throw_only;
+    settingsTransfer.checked = !!settings.is_transferable;
+    settingsBots.checked = !!settings.fill_with_bots;
+    settingsSignals.checked = settings.share_hand_signals !== false;
+    syncSettingsDeck();
+  }
+
+  function openSettings() {
+    if (!lastState || pending) return;
+    clearSettingsErrors();
+    fillSettingsForm(lastState);
+    if (typeof settingsDialog.showModal === "function") settingsDialog.showModal();
+    else settingsDialog.setAttribute("open", "");
+    settingsPlayers.focus();
+  }
+
+  settingsBtn.addEventListener("click", openSettings);
+
+  settingsCancel.addEventListener("click", function () {
+    settingsDialog.close();
+  });
+
+  settingsDialog.addEventListener("close", function () {
+    if (settingsBtn && !settingsBtn.hidden && !settingsBtn.closest(".lobby-action").hidden) {
+      settingsBtn.focus();
+    }
+  });
+
+  [settingsPlayers, settingsDeck].forEach(function (input) {
+    input.addEventListener("input", syncSettingsDeck);
+    input.addEventListener("change", syncSettingsDeck);
+  });
+
+  settingsForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (!lastState || !begin("settings")) return;
+    clearSettingsErrors();
+    if (!syncSettingsDeck()) {
+      pending = "";
+      settingsDeck.focus();
+      return;
+    }
+    var body = settingsBody();
+    if (sameSettings(lastState, body)) {
+      pending = "";
+      setSettingsFormError("Those settings are already in use.");
+      settingsSave.focus();
+      return;
+    }
+    settingsSave.disabled = true;
+    settingsSave.setAttribute("aria-busy", "true");
+    settingsSaveLabel.textContent = "Saving…";
+    api("PATCH", API + "settings/", body).then(function (lobby) {
+      pending = "";
+      settingsSave.disabled = false;
+      settingsSave.removeAttribute("aria-busy");
+      settingsSaveLabel.textContent = "Save settings";
+      settingsDialog.close("saved");
+      render(lobby);
+    }).catch(function (error) {
+      pending = "";
+      settingsSave.disabled = false;
+      settingsSave.removeAttribute("aria-busy");
+      settingsSaveLabel.textContent = "Save settings";
+      applySettingsErrors(error.data || { detail: errorText(error) });
     });
   });
 

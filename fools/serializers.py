@@ -10,6 +10,25 @@ from rest_framework import serializers
 from fools.services import OPENING_HAND, max_players_for_deck
 
 
+def deck_seat_error(card_count, max_players):
+    """Return an error string when the deck cannot deal every seat.
+
+    Args:
+        card_count: Deck size, such as 24, 36, or 52.
+        max_players: Seats the lobby wants.
+
+    Returns:
+        The player-facing sentence, or ``None`` when the deck fits.
+    """
+    seat_limit = max_players_for_deck(card_count)
+    if max_players <= seat_limit:
+        return None
+    return (
+        f"A {card_count}-card deck deals {OPENING_HAND} cards "
+        f"to each player, so it seats at most {seat_limit}."
+    )
+
+
 class LobbyCreateSerializer(serializers.Serializer):
     """Validate payload for :class:`fools.api_views.LobbyListCreateAPI` POST."""
 
@@ -75,16 +94,57 @@ class LobbyCreateSerializer(serializers.Serializer):
             )
         if not attrs.get("is_private"):
             attrs["password"] = ""
-        seat_limit = max_players_for_deck(attrs["card_count"])
-        if attrs["max_players"] > seat_limit:
-            raise serializers.ValidationError(
-                {
-                    "card_count": (
-                        f"A {attrs['card_count']}-card deck deals {OPENING_HAND} cards "
-                        f"to each player, so it seats at most {seat_limit}."
-                    )
-                }
-            )
+        too_small = deck_seat_error(attrs["card_count"], attrs["max_players"])
+        if too_small:
+            raise serializers.ValidationError({"card_count": too_small})
+        return attrs
+
+
+class LobbySettingsUpdateSerializer(serializers.Serializer):
+    """Validate a host's replacement of the rules that affect play.
+
+    Name, privacy, and password are not part of this payload. Jokers and the
+    turn timer stay as stored: the create form does not offer them, and play
+    does not apply them yet.
+    """
+
+    max_players = serializers.IntegerField(
+        min_value=2,
+        max_value=8,
+        error_messages={
+            "invalid": "Enter a whole number of players.",
+            "min_value": "Use at least 2 players.",
+            "max_value": "Use 8 players or fewer.",
+            "required": "Enter how many players can sit.",
+        },
+    )
+    card_count = serializers.ChoiceField(
+        choices=[24, 36, 52],
+        error_messages={
+            "invalid_choice": "Choose a deck of 24, 36, or 52 cards.",
+            "required": "Choose a deck.",
+        },
+    )
+    is_transferable = serializers.BooleanField()
+    neighbor_throw_only = serializers.BooleanField()
+    fill_with_bots = serializers.BooleanField()
+    share_hand_signals = serializers.BooleanField()
+
+    def validate(self, attrs):
+        """Reject a deck that cannot deal six cards to every seat.
+
+        Args:
+            attrs: Incoming validated fields.
+
+        Returns:
+            The same dict.
+
+        Raises:
+            serializers.ValidationError: When the deck is too small.
+        """
+        too_small = deck_seat_error(attrs["card_count"], attrs["max_players"])
+        if too_small:
+            raise serializers.ValidationError({"card_count": too_small})
         return attrs
 
 

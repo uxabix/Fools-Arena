@@ -682,6 +682,20 @@
   color: #f3f5f8;
 }
 
+.lobby-settings-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--game-radius-sm);
+  background: rgba(240, 213, 106, 0.18);
+  color: #f0d56a;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.lobby-settings.is-updated div {
+  animation: lobby-player-pulse 1.2s ease;
+}
+
 .lobby-detail-page .game-players li {
   display: flex;
   flex-wrap: wrap;
@@ -845,6 +859,18 @@
   white-space: pre-wrap;
 }
 
+.game-chat-line--system {
+  margin: 0.35rem 0;
+  padding: 0.45rem 0.7rem;
+  border-left: 3px solid #f0d56a;
+  border-radius: var(--game-radius-sm);
+  background: rgba(240, 213, 106, 0.12);
+}
+
+.game-chat-line--system .game-chat-line__name {
+  color: #f0d56a;
+}
+
 .lobby-detail-page .game-chat-form input[type="text"] {
   min-width: 0;
 }
@@ -856,7 +882,8 @@
 @media (prefers-reduced-motion: reduce) {
   .lobby-player.is-updated,
   .lobby-ready-count.is-updated,
-  .lobby-detail-page .game-players li.is-updated {
+  .lobby-detail-page .game-players li.is-updated,
+  .lobby-settings.is-updated div {
     animation: none;
     outline: 2px solid #f0d56a;
   }
@@ -902,6 +929,15 @@
 .lobby-dialog h2 {
   margin: 0 0 0.6rem;
   font-size: 1.2rem;
+}
+
+.lobby-dialog--settings {
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.lobby-dialog--settings .lobby-dialog__note {
+  margin: 0 0 1rem;
 }
 
 .lobby-dialog p {

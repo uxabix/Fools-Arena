@@ -28,6 +28,7 @@
       </button>
     </form>
 
+    <p id="settings-notice" class="lobby-settings-notice" role="status" hidden></p>
     <dl id="lobby-settings" class="lobby-settings" aria-label="Lobby settings" hidden></dl>
 
     <div id="lobby-roster" class="lobby-roster" hidden>
@@ -52,6 +53,11 @@
           <span id="btn-join-label">Join this lobby</span>
         </button>
         <p id="join-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+      <div class="lobby-action" hidden>
+        <button type="button" id="btn-settings" class="game-btn game-btn--secondary game-btn--hidden" aria-haspopup="dialog" aria-controls="settings-dialog">
+          <span id="btn-settings-label">Edit settings</span>
+        </button>
       </div>
       <div class="lobby-action" hidden>
         <button type="button" id="btn-ready" class="game-btn game-btn--secondary game-btn--hidden" aria-pressed="false">
@@ -99,6 +105,64 @@
     </form>
     <p id="chat-error" class="lobby-field__error" role="alert" hidden></p>
   </section>
+
+  <dialog id="settings-dialog" class="lobby-dialog lobby-dialog--settings" aria-labelledby="settings-dialog-title" aria-describedby="settings-dialog-note">
+    <h2 id="settings-dialog-title">Game settings</h2>
+    <p id="settings-dialog-note" class="lobby-dialog__note">Saving new settings clears ready status for everyone in this lobby, including you. The lobby name, privacy, and password stay as they are.</p>
+    <form id="settings-form" class="game-form game-form--stacked" novalidate>
+      <div class="lobby-field" data-field="max_players">
+        <label class="lobby-field__label" for="settings-max-players">Players</label>
+        <input id="settings-max-players" name="max_players" type="number" min="2" max="8" inputmode="numeric" required aria-describedby="settings-max-players-hint settings-max-players-error" />
+        <p id="settings-max-players-hint" class="field-hint">2–6 for this deck. Each player is dealt 6 cards.</p>
+        <p id="settings-max-players-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+      <div class="lobby-field" data-field="card_count">
+        <label class="lobby-field__label" for="settings-card-count">Deck</label>
+        <select id="settings-card-count" name="card_count" required aria-describedby="settings-card-count-hint settings-card-count-error">
+          <option value="24">24 cards</option>
+          <option value="36">36 cards</option>
+          <option value="52">52 cards</option>
+        </select>
+        <p id="settings-card-count-hint" class="field-hint">The deck must cover 6 cards for every seat.</p>
+        <p id="settings-card-count-error" class="lobby-field__error" role="alert" hidden></p>
+      </div>
+      <div class="lobby-field" data-field="neighbor_throw_only">
+        <label class="game-form__check" for="settings-neighbors">
+          <input id="settings-neighbors" name="neighbor_throw_only" type="checkbox" />
+          <span>Neighbors only</span>
+        </label>
+        <p class="field-hint">Only the players sitting beside the defender can add extra cards.</p>
+      </div>
+      <div class="lobby-field" data-field="is_transferable">
+        <label class="game-form__check" for="settings-transfer">
+          <input id="settings-transfer" name="is_transferable" type="checkbox" />
+          <span>Transfer</span>
+        </label>
+        <p class="field-hint">Before anything is beaten, the defender can pass the attack to the next player with cards of the same rank.</p>
+      </div>
+      <div class="lobby-field" data-field="fill_with_bots">
+        <label class="game-form__check" for="settings-bots">
+          <input id="settings-bots" name="fill_with_bots" type="checkbox" />
+          <span>Fill empty seats with bots</span>
+        </label>
+        <p class="field-hint">When the game starts, empty seats are taken by bots that play the lowest legal card.</p>
+      </div>
+      <div class="lobby-field" data-field="share_hand_signals">
+        <label class="game-form__check" for="settings-signals">
+          <input id="settings-signals" name="share_hand_signals" type="checkbox" />
+          <span>Share hand signals</span>
+        </label>
+        <p class="field-hint">Other players see which cards you lift and when you reorder your hand. Card faces stay hidden.</p>
+      </div>
+      <p id="settings-form-error" class="lobby-field__error" role="alert" hidden></p>
+      <div class="lobby-dialog__actions">
+        <button type="button" id="settings-cancel" class="game-btn game-btn--secondary">Cancel</button>
+        <button type="submit" id="settings-save" class="game-btn game-btn--primary">
+          <span id="settings-save-label">Save settings</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="leave-dialog" class="lobby-dialog" aria-labelledby="leave-dialog-title" aria-describedby="leave-dialog-text">
     <h2 id="leave-dialog-title">Leave this lobby?</h2>

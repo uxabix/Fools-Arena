@@ -43,7 +43,12 @@ from fools.models import (
     TableCard,
     Turn,
 )
-from chat.services import get_lobby_chat, remove_user_from_lobby_chat
+from chat.services import (
+    get_lobby_chat,
+    message_payload,
+    record_lobby_notice,
+    remove_user_from_lobby_chat,
+)
 from fools.card_catalog import ensure_playing_cards_for_deck_size
 from fools.realtime import broadcast_game, broadcast_lobby, broadcast_lobby_list
 
@@ -759,6 +764,10 @@ def create_lobby(
 def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPlayer:
     """Add ``user`` to ``lobby`` or reactivate a previously left membership.
 
+    The lobby row is locked first so a host who is shrinking the table
+    cannot commit a smaller seat count while this join is still deciding
+    the room is not full.
+
     Args:
         lobby: Target lobby.
         user: Joining user.
@@ -770,6 +779,7 @@ def join_lobby(lobby: Lobby, user: User, password: str | None = None) -> LobbyPl
     Raises:
         GameError: If the lobby is full, closed, password is wrong, or duplicate.
     """
+    lobby = Lobby.objects.select_for_update().get(pk=lobby.pk)
     if lobby.status == "closed":
         raise GameError("Lobby is closed", "closed")
     leave_other_active_lobbies(user, except_lobby=lobby)
@@ -851,6 +861,9 @@ def leave_lobby(lobby: Lobby, user: User) -> dict:
 def set_ready(lobby: Lobby, user: User, ready: bool):
     """Toggle waiting/ready status for a member.
 
+    The lobby row is locked first, then the membership, so this toggle
+    cannot commit in the middle of a settings change that clears ready.
+
     Args:
         lobby: Lobby context.
         user: Member toggling readiness.
@@ -860,9 +873,15 @@ def set_ready(lobby: Lobby, user: User, ready: bool):
         GameError: If ``user`` is not an active member, or the lobby is not
             waiting.
     """
+    lobby = Lobby.objects.select_for_update().get(pk=lobby.pk)
     if lobby.status != "waiting":
         raise GameError("The lobby is not waiting for players.", "state")
-    lp = LobbyPlayer.objects.filter(lobby=lobby, user=user).exclude(status="left").first()
+    lp = (
+        LobbyPlayer.objects.select_for_update()
+        .filter(lobby=lobby, user=user)
+        .exclude(status="left")
+        .first()
+    )
     if not lp:
         raise GameError("Not in lobby", "not_found")
     if lp.status == "playing":
@@ -870,6 +889,145 @@ def set_ready(lobby: Lobby, user: User, ready: bool):
     lp.status = "ready" if ready else "waiting"
     lp.save(update_fields=["status"])
     broadcast_lobby(lobby.id, "ready_changed", {"user_id": str(user.id), "ready": ready})
+
+
+_SETTINGS_FIELDS = (
+    "max_players",
+    "card_count",
+    "is_transferable",
+    "neighbor_throw_only",
+    "fill_with_bots",
+    "share_hand_signals",
+)
+
+_SETTINGS_LABELS = {
+    "max_players": "Seats",
+    "card_count": "Deck",
+    "is_transferable": "Transfer",
+    "neighbor_throw_only": "Neighbors only",
+    "fill_with_bots": "Bots",
+    "share_hand_signals": "Hand signals",
+}
+
+
+def _setting_text(key: str, value) -> str:
+    """Return the player-facing value of one lobby rule.
+
+    Args:
+        key: Field name on :class:`~fools.models.LobbySettings`.
+        value: Current or incoming value.
+
+    Returns:
+        A short English phrase, such as ``36 cards`` or ``on``.
+    """
+    if key == "card_count":
+        return f"{value} cards"
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    return str(value)
+
+
+@transaction.atomic
+def update_lobby_settings(lobby: Lobby, user: User, changes: dict) -> Lobby:
+    """Replace play rules while the lobby is waiting, then clear ready.
+
+    Only the host may call this. Name, privacy, password, jokers, and the
+    turn timer are left as stored. When a value actually changes, every
+    ready member becomes waiting and the lobby chat gets a system notice.
+
+    Args:
+        lobby: Lobby whose rules are edited.
+        user: Signed-in user, who must be the host.
+        changes: Replacement values for the editable rules.
+
+    Returns:
+        The lobby after the change. Unchanged input returns it as it was.
+
+    Raises:
+        GameError: When the caller is not the host, a match is underway,
+            the deck cannot cover the seats, or the new seat count is
+            below the number of people still in the lobby.
+    """
+    locked = Lobby.objects.select_for_update().get(pk=lobby.pk)
+    if locked.owner_id != user.id:
+        logger.warning(
+            "Rejected lobby settings change lobby=%s user=%s",
+            locked.id,
+            user.id,
+        )
+        raise GameError("Only the host can change game settings.", "forbidden")
+    if locked.status != "waiting":
+        raise GameError(
+            "Game settings can be changed only while the lobby is waiting.",
+            "state",
+        )
+    if Game.objects.filter(lobby=locked, status="in_progress").exists():
+        raise GameError(
+            "Game settings can be changed only while the lobby is waiting.",
+            "state",
+        )
+    settings = LobbySettings.objects.select_for_update().get(lobby=locked)
+    seated = locked.players.exclude(status="left").count()
+    new_max = changes["max_players"]
+    if new_max < seated:
+        noun = "player" if seated == 1 else "players"
+        seats = "seat" if seated == 1 else "seats"
+        raise GameError(
+            f"This lobby already has {seated} {noun}, so it needs at least {seated} {seats}.",
+            "seats",
+        )
+    seat_limit = max_players_for_deck(changes["card_count"])
+    if new_max > seat_limit:
+        raise GameError(
+            f"A {changes['card_count']}-card deck deals {OPENING_HAND} cards to each player, "
+            f"so it seats at most {seat_limit}.",
+            "config",
+        )
+
+    changed = []
+    update_fields = []
+    for key in _SETTINGS_FIELDS:
+        old = getattr(settings, key)
+        new = changes[key]
+        if old == new:
+            continue
+        setattr(settings, key, new)
+        update_fields.append(key)
+        changed.append(
+            f"{_SETTINGS_LABELS[key]} {_setting_text(key, old)} to {_setting_text(key, new)}"
+        )
+    if not update_fields:
+        return locked
+
+    settings.save(update_fields=update_fields)
+    list(
+        LobbyPlayer.objects.select_for_update().filter(lobby=locked, status="ready")
+    )
+    LobbyPlayer.objects.filter(lobby=locked, status="ready").update(status="waiting")
+    notice = record_lobby_notice(
+        locked,
+        user,
+        f"{user.username} changed the game settings: {'; '.join(changed)}. "
+        "Readiness was cleared.",
+    )
+    chat_payload = message_payload(notice)
+    lobby_id = locked.id
+    actor_id = str(user.id)
+    changed_fields = ",".join(update_fields)
+
+    def publish():
+        broadcast_lobby(lobby_id, "lobby_chat", chat_payload)
+        broadcast_lobby(lobby_id, "settings_changed", {"user_id": actor_id})
+        logger.info(
+            "Lobby settings changed lobby=%s user=%s fields=%s",
+            lobby_id,
+            actor_id,
+            changed_fields,
+        )
+
+    transaction.on_commit(publish)
+    publish_lobby_list(locked.id)
+    return Lobby.objects.select_related("settings", "owner").get(pk=locked.pk)
 
 
 @transaction.atomic

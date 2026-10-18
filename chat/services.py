@@ -74,6 +74,50 @@ def remove_user_from_lobby_chat(lobby: Lobby, user):
         chat.remove_participant(user)
 
 
+def message_payload(message) -> dict:
+    """JSON fields the lobby chat sends to browsers.
+
+    Args:
+        message: Stored chat line. ``sender`` is read for the display name.
+
+    Returns:
+        Dict with string ids, ``kind``, and an ISO timestamp.
+    """
+    return {
+        "id": str(message.id),
+        "sender_id": str(message.sender_id),
+        "username": message.sender.username,
+        "content": message.content,
+        "sent_at": message.sent_at.isoformat(),
+        "kind": message.kind,
+    }
+
+
+def record_lobby_notice(lobby: Lobby, sender, content: str):
+    """Store a system notice in the lobby chat.
+
+    ``sender`` is the member who caused the notice. ``kind`` is ``system``,
+    so clients do not show the line as that person typing in chat.
+
+    Args:
+        lobby: Lobby whose chat receives the line.
+        sender: Member who caused the notice.
+        content: Plain text already written for players.
+
+    Returns:
+        The created message.
+    """
+    from .models import Message
+
+    chat = get_lobby_chat(lobby)
+    return Message.objects.create(
+        sender=sender,
+        chat=chat,
+        content=content,
+        kind=Message.KIND_SYSTEM,
+    )
+
+
 def assert_can_send_message(chat, sender):
     """Raise ``PermissionError`` if ``sender`` may not post in ``chat``.
 

@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Message
-from chat.services import assert_can_send_message, get_lobby_chat
+from chat.services import assert_can_send_message, get_lobby_chat, message_payload
 from fools.models import Game, Lobby, LobbyPlayer
 from fools.realtime import broadcast_lobby
 from fools.serializers import (
@@ -23,6 +23,7 @@ from fools.serializers import (
     LobbyCreateSerializer,
     LobbyJoinSerializer,
     LobbyMessageSerializer,
+    LobbySettingsUpdateSerializer,
     ReadySerializer,
 )
 from fools.bots.runner import run_bots, schedule_bots
@@ -42,6 +43,7 @@ from fools.services import (
     serialize_lobby,
     set_ready,
     start_game,
+    update_lobby_settings,
     take_table,
     transfer_attack,
     rematch,
@@ -186,6 +188,41 @@ class LobbyLeaveAPI(APIView):
                 "new_owner_id": info.get("new_owner_id"),
             }
         )
+
+
+class LobbySettingsAPI(APIView):
+    """Host-only replacement of game rules while the lobby is waiting."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, lobby_id):
+        """Apply the host's rules and return the lobby snapshot.
+
+        Args:
+            request: Authenticated request with the settings body.
+            lobby_id: Lobby UUID.
+
+        Returns:
+            The lobby after a change, or as it already was when nothing differed.
+        """
+        lobby = get_object_or_404(Lobby, id=lobby_id)
+        if lobby.is_private:
+            is_member = lobby.players.filter(user=request.user).exclude(status="left").exists()
+            if not is_member and lobby.owner_id != request.user.id:
+                return Response(
+                    {
+                        "detail": "Enter the password to join this private lobby.",
+                        "code": "password_required",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        ser = LobbySettingsUpdateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            lobby = update_lobby_settings(lobby, request.user, ser.validated_data)
+        except GameError as e:
+            return _err(e)
+        return Response(serialize_lobby(lobby))
 
 
 class LobbyReadyAPI(APIView):
@@ -404,20 +441,13 @@ class LobbyMessagesAPI(APIView):
         if not lobby.players.filter(user=request.user).exclude(status="left").exists():
             return Response(status=status.HTTP_403_FORBIDDEN)
         chat = get_lobby_chat(lobby)
-        msgs = list(Message.objects.filter(chat=chat).order_by("-sent_at")[:100])
-        msgs.reverse()
-        return Response(
-            [
-                {
-                    "id": str(m.id),
-                    "sender_id": str(m.sender_id),
-                    "username": m.sender.username,
-                    "content": m.content,
-                    "sent_at": m.sent_at.isoformat(),
-                }
-                for m in msgs
-            ]
+        msgs = list(
+            Message.objects.filter(chat=chat)
+            .select_related("sender")
+            .order_by("-sent_at")[:100]
         )
+        msgs.reverse()
+        return Response([message_payload(m) for m in msgs])
 
     def post(self, request, lobby_id):
         lobby = get_object_or_404(Lobby, id=lobby_id)
@@ -435,24 +465,6 @@ class LobbyMessagesAPI(APIView):
             chat=chat,
             content=ser.validated_data["content"],
         )
-        broadcast_lobby(
-            lobby.id,
-            "lobby_chat",
-            {
-                "id": str(m.id),
-                "sender_id": str(m.sender_id),
-                "username": m.sender.username,
-                "content": m.content,
-                "sent_at": m.sent_at.isoformat(),
-            },
-        )
-        return Response(
-            {
-                "id": str(m.id),
-                "sender_id": str(m.sender_id),
-                "username": m.sender.username,
-                "content": m.content,
-                "sent_at": m.sent_at.isoformat(),
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        payload = message_payload(m)
+        broadcast_lobby(lobby.id, "lobby_chat", payload)
+        return Response(payload, status=status.HTTP_201_CREATED)

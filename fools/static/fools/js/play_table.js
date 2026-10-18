@@ -1275,9 +1275,18 @@
       if (!message || !message.id) return;
       if (log.querySelector('[data-id="' + message.id + '"]')) return;
       var line = document.createElement("div");
-      line.className = "game-chat-line";
+      var system = message.kind === "system";
+      line.className = system ? "game-chat-line game-chat-line--system" : "game-chat-line";
       line.dataset.id = message.id;
-      line.textContent = (message.username || "Player") + ": " + (message.content || "");
+      if (system) {
+        var label = document.createElement("span");
+        label.className = "visually-hidden";
+        label.textContent = "System. ";
+        line.appendChild(label);
+        line.appendChild(document.createTextNode(message.content || ""));
+      } else {
+        line.textContent = (message.username || "Player") + ": " + (message.content || "");
+      }
       log.appendChild(line);
       log.scrollTop = log.scrollHeight;
     }

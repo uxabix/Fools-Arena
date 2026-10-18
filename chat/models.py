@@ -270,13 +270,22 @@ class Message(models.Model):
 
     Messages belong strictly to a ``Chat`` instance. Lobby and direct messages
     differ by chat type only; there are no separate lobby or receiver fields
-    on this model.
+    on this model. ``kind`` is ``system`` for a notice the server wrote, such
+    as a settings change. Players cannot choose that kind themselves.
     """
+
+    KIND_USER = "user"
+    KIND_SYSTEM = "system"
+    KIND_CHOICES = [
+        (KIND_USER, "User"),
+        (KIND_SYSTEM, "System"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sender = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='sent_messages')
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
     content = models.TextField()
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_USER)
     sent_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

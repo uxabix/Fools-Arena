@@ -10,6 +10,11 @@ urlpatterns = [
     path("lobbies/<uuid:lobby_id>/join/", api_views.LobbyJoinAPI.as_view(), name="api-lobby-join"),
     path("lobbies/<uuid:lobby_id>/leave/", api_views.LobbyLeaveAPI.as_view(), name="api-lobby-leave"),
     path("lobbies/<uuid:lobby_id>/ready/", api_views.LobbyReadyAPI.as_view(), name="api-lobby-ready"),
+    path(
+        "lobbies/<uuid:lobby_id>/settings/",
+        api_views.LobbySettingsAPI.as_view(),
+        name="api-lobby-settings",
+    ),
     path("lobbies/<uuid:lobby_id>/start/", api_views.LobbyStartAPI.as_view(), name="api-lobby-start"),
     path(
         "lobbies/<uuid:lobby_id>/messages/",
