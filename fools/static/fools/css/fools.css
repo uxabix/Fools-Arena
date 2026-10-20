@@ -2281,7 +2281,7 @@
 
 .play-page--classic .play-felt-center {
   flex: 1 1 16rem;
-  /* Extra attack rows scroll inside this box instead of pushing the hand. */
+  /* Extra attack rows stay within the felt without an inner vertical scroll. */
   height: 20rem;
   padding: 0.85rem;
   background: rgba(0, 0, 0, 0.12);
@@ -2291,7 +2291,8 @@
   align-items: center;
   align-items: safe center;
   justify-content: center;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .play-page--classic .play-take-handle {
@@ -2427,7 +2428,7 @@
   .play-page--classic .play-felt__inner {
     position: relative;
     display: block;
-    min-height: 20rem;
+    height: 20rem;
   }
 
   .play-page--classic .play-piles {
@@ -2443,8 +2444,9 @@
   .play-page--classic .play-deck-trump,
   .play-page--classic .play-discard {
     position: absolute;
-    top: 50%;
-    width: 7.2rem;
+    top: auto;
+    bottom: 0.35rem;
+    width: clamp(4.5rem, 8vw, 7.2rem);
     min-height: 0;
     margin: 0;
     padding: 0;
@@ -2455,13 +2457,36 @@
 
   .play-page--classic .play-deck-trump {
     left: 0;
-    transform: translateY(-50%);
+    transform: none;
   }
 
   .play-page--classic .play-discard {
     right: 0;
     left: auto;
-    transform: translateY(-50%);
+    transform: none;
+  }
+
+  .play-page--classic .play-deck-trump-pile {
+    width: clamp(5.5rem, 9.72vw, 8.75rem);
+    height: clamp(5rem, 9.28vw, 8.35rem);
+  }
+
+  .play-page--classic .play-deck-stack {
+    left: 5%;
+    width: 65%;
+    height: 94%;
+  }
+
+  .play-page--classic .play-deck-stack__layer .play-card-svg {
+    width: clamp(44px, 5.67vw, 68px);
+  }
+
+  .play-page--classic .play-trump-card--under-deck {
+    left: 30%;
+  }
+
+  .play-page--classic .play-trump-card--under-deck .play-card-svg {
+    width: clamp(2.8rem, 5.1vw, 4.75rem);
   }
 
   .play-page--classic .play-pile__label,
@@ -2471,15 +2496,17 @@
   }
 
   .play-page--classic .play-felt-center {
-    position: relative;
+    position: absolute;
+    inset: 0;
     z-index: 2;
-    width: 100%;
-    flex: none;
-    height: 20rem;
-    padding: 0.85rem 7.5rem;
+    width: auto;
+    height: auto;
+    padding: 0.85rem clamp(4.5rem, 12vw, 7.5rem);
     background: transparent;
     border: none;
     box-shadow: none;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 }
 
@@ -2876,6 +2903,39 @@
   border: 2px dashed rgba(255, 255, 255, 0.15);
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.12);
+}
+
+@media (min-width: 900px) and (max-width: 1199px) {
+  .play-page--classic .play-table-grid {
+    gap: clamp(0.3rem, 0.8vw, 0.65rem);
+  }
+
+  .play-page--classic .play-table-stack {
+    width: clamp(3.1rem, 6vw, 4.2rem);
+    min-height: clamp(5rem, 9vw, 6.2rem);
+  }
+
+  .play-page--classic .play-card--table .play-card-svg {
+    width: clamp(44px, 6vw, 68px);
+  }
+
+  .play-page--classic .play-card--placeholder {
+    min-width: clamp(44px, 6vw, 68px);
+    min-height: clamp(62px, 8.5vw, 94px);
+  }
+}
+
+@media (min-width: 900px) {
+  .play-page--classic .play-discard__stack {
+    width: clamp(3.8rem, 6.2vw, 5.4rem);
+    height: clamp(5.3rem, 8.75vw, 7.6rem);
+    margin: 0 auto;
+  }
+
+  .play-page--classic .play-discard__back .play-card-svg,
+  .play-page--classic .play-discard__top .play-card-svg {
+    width: clamp(44px, 5.67vw, 68px);
+  }
 }
 
 /* Errors */
@@ -4253,7 +4313,8 @@ body.game-skin {
   body.play-screen .play-deck-trump,
   body.play-screen .play-discard {
     position: absolute;
-    top: 50%;
+    top: auto;
+    bottom: 0.35rem;
     width: 7.2rem;
     min-height: 0;
     margin: 0;
@@ -4265,13 +4326,13 @@ body.game-skin {
 
   body.play-screen .play-deck-trump {
     left: 0;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
   }
 
   body.play-screen .play-discard {
     right: 0;
     left: auto;
-    transform: translate(50%, -50%);
+    transform: translateX(50%);
   }
 
   body.play-screen .play-pile__label,
