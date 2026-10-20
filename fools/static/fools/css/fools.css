@@ -2779,6 +2779,24 @@
   opacity: 0.55;
 }
 
+.play-page--classic .play-card--hand.is-error {
+  animation: play-card-error 0.62s ease-in-out;
+  outline: 3px solid #ef5350;
+  outline-offset: 2px;
+}
+
+@keyframes play-card-error {
+  0%, 100% { translate: 0 0; }
+  20%, 60% { translate: 7px 0; }
+  40%, 80% { translate: -7px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-page--classic .play-card--hand.is-error {
+    animation: none;
+  }
+}
+
 .play-page--classic .play-card--trump .play-card-svg {
   -webkit-filter: drop-shadow(0 0 5px rgba(255, 213, 79, 0.75));
   filter: drop-shadow(0 0 5px rgba(255, 213, 79, 0.75));

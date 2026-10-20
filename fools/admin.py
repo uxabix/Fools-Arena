@@ -666,7 +666,7 @@ class LobbySettingsAdmin(admin.ModelAdmin):
     beginner_friendly_display.short_description = "Difficulty"
 
 
-# Добавим LobbyPlayerInline к LobbyAdmin
+# Add LobbyPlayerInline to LobbyAdmin.
 LobbyAdmin.inlines = [LobbyPlayerInline]
 
 
@@ -1755,7 +1755,7 @@ class SpecialRuleSetCardInline(admin.TabularInline):
     fields = ('card', 'is_enabled', 'id')
 
 
-# Добавим inline к SpecialRuleSetAdmin
+# Add the inline to SpecialRuleSetAdmin.
 SpecialRuleSetAdmin.inlines = [SpecialRuleSetCardInline]
 
 
@@ -1923,7 +1923,7 @@ class SpecialRuleSetCardAdmin(admin.ModelAdmin):
     toggle_status.short_description = "Toggle enable/disable status"
 
 
-# Регистрируем остальные модели с базовой конфигурацией
+# Register the remaining models with the base configuration.
 @admin.register(GameDeck)
 class GameDeckAdmin(admin.ModelAdmin):
     """Admin interface for the GameDeck model.

@@ -1050,8 +1050,39 @@
       })
       .catch(function (e) {
         setErr(e.message || "Could not play.");
+        var cardIds = body && (body.card_ids || (body.card_id ? [body.card_id] : null));
+        flashRuleError(cardIds);
         endSend(button);
       });
+  }
+
+  function flashCardError(card) {
+    if (!card) return;
+    card.classList.remove("is-error");
+    void card.offsetWidth;
+    card.classList.add("is-error");
+    card.addEventListener("animationend", function onAnimationEnd(event) {
+      if (event.animationName !== "play-card-error") return;
+      card.classList.remove("is-error");
+      card.removeEventListener("animationend", onAnimationEnd);
+    });
+  }
+
+  function flashRuleError(cardIds) {
+    var cards = Array.prototype.slice.call(document.querySelectorAll(".play-card--hand"));
+    var wanted = new Set((cardIds || []).map(String));
+    var targets = wanted.size
+      ? cards.filter(function (card) { return wanted.has(String(card.dataset.cid)); })
+      : cards.filter(function (card) { return card.classList.contains("is-selected"); });
+    targets.forEach(flashCardError);
+  }
+
+  function flashDraggedCards(ids) {
+    var wanted = new Set((ids || []).map(String));
+    document.querySelectorAll(".play-card--hand").forEach(function (card) {
+      if (!wanted.has(String(card.dataset.cid))) return;
+      flashCardError(card);
+    });
   }
 
   function setIdleLabel(btn, label) {
@@ -1623,10 +1654,19 @@
       setDragCardIds(ev, attackPayloadFromDrag(card.id));
       wrap.classList.add("is-dragging");
       markDropTargets(attackPayloadFromDrag(card.id));
+      if (!selected.has(card.id)) {
+        selected.add(card.id);
+        refreshHandMarks(uidStr(), viewer(uidStr()), (state && state.runtime) || {}, state && state.trump_card ? state.trump_card.suit : null);
+      }
+      publishHandSignal();
     });
     wrap.addEventListener("dragend", function () {
       wrap.classList.remove("is-dragging");
       clearDropTargets();
+      if (selected.delete(card.id)) {
+        refreshHandMarks(uidStr(), viewer(uidStr()), (state && state.runtime) || {}, state && state.trump_card ? state.trump_card.suit : null);
+        publishHandSignal();
+      }
       if (!handDirty) return;
       handDirty = false;
       render(state.table || []);
@@ -2652,50 +2692,43 @@
     if (mat) {
       watchDropHover(mat);
       mat.ondragover = allowDrop;
-      mat.ondrop = null;
-      if (state.status === "in_progress" && canAddCards(uid, rt)) {
-        mat.ondrop = function (ev) {
-          ev.preventDefault();
-          var ids = getDragCardIds(ev);
-          if (!ids || !ids.length) return;
-          var cards = [];
-          ids.forEach(function (id) {
-            var card = me && me.hand && me.hand.find(function (item) { return item.id === id; });
-            if (card) cards.push(card);
-          });
-          if (cards.length !== ids.length || !attackSelectionFits(cards, uid, rt)) {
-            setErr("Those cards cannot be played.");
-            return;
-          }
-          postAction(null, "attack/", { card_ids: ids }, true);
-        };
-      }
+      mat.ondrop = function (ev) {
+        ev.preventDefault();
+        var ids = getDragCardIds(ev);
+        if (!ids || !ids.length) return;
+        var cards = [];
+        ids.forEach(function (id) {
+          var card = me && me.hand && me.hand.find(function (item) { return item.id === id; });
+          if (card) cards.push(card);
+        });
+        if (cards.length !== ids.length || state.status !== "in_progress" || !attackSelectionFits(cards, uid, rt)) {
+          setErr(canAddCards(uid, rt) ? "Those cards cannot be played." : "You cannot play cards right now.");
+          flashDraggedCards(ids);
+          return;
+        }
+        postAction(null, "attack/", { card_ids: ids }, true);
+      };
     }
 
     document.querySelectorAll(".play-table-pair").forEach(function (rowEl) {
-      rowEl.ondragover = null;
-      rowEl.ondrop = null;
-    });
-    document.querySelectorAll(".play-table-pair--open").forEach(function (rowEl) {
       rowEl.ondragover = allowDrop;
-      rowEl.ondrop = null;
-      if (state.status === "in_progress" && wave && isDef) {
-        rowEl.ondrop = function (ev) {
-          ev.preventDefault();
-          var ids = getDragCardIds(ev);
-          if (!ids || !ids.length) return;
-          var tid = rowEl.dataset.tableCardId;
-          if (!tid) return;
-          var trumpSuit = state.trump_card ? state.trump_card.suit : null;
-          var card = me && me.hand && me.hand.find(function (item) { return item.id === ids[0]; });
-          var row = (state.table || []).find(function (item) { return item.id === tid; });
-          if (card && row && canBeatCard(card, row.attack, trumpSuit)) {
-            postAction(null, "defend/", { table_card_id: tid, card_id: ids[0] }, true);
-            return;
-          }
-          setErr("That card cannot beat this attack. To transfer, select the attack rank and press Transfer.");
-        };
-      }
+      rowEl.ondrop = function (ev) {
+        ev.preventDefault();
+        var ids = getDragCardIds(ev);
+        if (!ids || !ids.length) return;
+        var tid = rowEl.dataset.tableCardId;
+        var trumpSuit = state.trump_card ? state.trump_card.suit : null;
+        var card = me && me.hand && me.hand.find(function (item) { return item.id === ids[0]; });
+        var row = (state.table || []).find(function (item) { return item.id === tid; });
+        if (state.status === "in_progress" && wave && isDef && rowEl.classList.contains("play-table-pair--open") && card && row && canBeatCard(card, row.attack, trumpSuit)) {
+          postAction(null, "defend/", { table_card_id: tid, card_id: ids[0] }, true);
+          return;
+        }
+        setErr(state.status === "in_progress" && wave && isDef
+          ? "That card cannot beat this attack. To transfer, select the attack rank and press Transfer."
+          : "You cannot defend right now.");
+        flashDraggedCards(ids);
+      };
     });
   }
 
