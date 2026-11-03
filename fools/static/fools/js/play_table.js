@@ -54,22 +54,6 @@
     return m[suit] || suit;
   }
 
-  function phaseEn(phase) {
-    var m = {
-      between: "Opening attack",
-      build: "Attack and defense",
-      defend: "Defense",
-      taking: "Taking",
-    };
-    return m[phase] || phase || "—";
-  }
-
-  function modeLabel() {
-    var name = state && state.transferable ? "Transfer" : "Throw-in";
-    if (state && state.neighbor_throw_only) name += ", neighbors only";
-    return name;
-  }
-
   /** Catalog ranks are "6" and "10". Word names are accepted too. */
   var CARD_RANK_FILE = {
     Ace: "ace",
@@ -387,6 +371,21 @@
     return names;
   }
 
+  /**
+   * Phone seat pose. Hand tilt is ±30° at the row edge and 0 on the midline.
+   * The edge also sits lower, so it overlaps the felt more. A seat nearer
+   * the midline is a little further from the table. Left tilt is negative.
+   * @param {HTMLElement} div
+   * @param {number} index
+   * @param {number} total
+   */
+  function placePhoneSeat(div, index, total) {
+    var mid = (total - 1) / 2;
+    var along = mid ? (index - mid) / mid : 0;
+    div.style.setProperty("--opp-rot", (along * 30).toFixed(2) + "deg");
+    div.style.setProperty("--opp-drop", (0.55 + Math.abs(along) * 0.7).toFixed(2) + "rem");
+  }
+
   function seatPlace(index, total, playerId, uid, rt) {
     var notes = [];
     var canSendTransfer = String(rt && rt.defender_id) === String(uid) && transferRoom(1);
@@ -479,6 +478,7 @@
     var passed = hasPassed(player.user_id, rt);
     var duty = dutyText(player.user_id, rt);
     div.className = "play-opponent is-" + roleKey + (mustAct ? " is-acting" : " is-waiting");
+    placePhoneSeat(div, index, total);
     if (passed) div.classList.add("is-finished");
     if (div.dataset.role !== roleKey) {
       div.dataset.role = roleKey;
@@ -800,8 +800,6 @@
         );
       }
       parts.push('<span class="play-deck-stack__count">' + deckN + "</span></div>");
-    } else if (!trumpInDeck) {
-      parts.push('<div class="play-deck-stack play-deck-stack--empty">Deck empty</div>');
     }
     parts.push("</div>");
     el.innerHTML = parts.join("");
@@ -829,7 +827,47 @@
     el.innerHTML = parts.join("");
   }
 
-  function renderStatusbar(uid, me, rt) {
+  /**
+   * Small stroke icon for the game summary.
+   * @param {string} kind
+   * @return {string}
+   */
+  function statusIcon(kind) {
+    var body = {
+      throw: '<rect x="2.5" y="5" width="9" height="14" rx="1.4"/><path d="M14 12h6"/><path d="M17.5 8.5 21.5 12 17.5 15.5"/>',
+      transfer: '<path d="M20 8a8 8 0 0 0-13.5-3.2L4 7"/><path d="M4 3.5V7h3.5"/><path d="M4 16a8 8 0 0 0 13.5 3.2L20 17"/><path d="M20 20.5V17h-3.5"/>',
+      deck: '<rect x="7" y="3.5" width="11" height="15" rx="1.4"/><rect x="4" y="6" width="11" height="15" rx="1.4"/>',
+      neighbors: '<circle cx="8" cy="8" r="2.2"/><circle cx="16" cy="8" r="2.2"/><path d="M3.8 18.5c.6-2.4 2.3-3.6 4.2-3.6s3.6 1.2 4.2 3.6"/><path d="M11.8 18.5c.6-2.4 2.3-3.6 4.2-3.6s3.6 1.2 4.2 3.6"/>',
+      bots: '<rect x="7" y="8" width="10" height="8" rx="2"/><circle cx="10" cy="12" r="0.8"/><circle cx="14" cy="12" r="0.8"/><path d="M12 8V5"/><circle cx="12" cy="4" r="0.8"/><path d="M8 18.5v1.5M16 18.5v1.5"/>',
+      signals: '<path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.4"/>',
+    };
+    return '<svg class="play-status__icon" viewBox="0 0 24 24" aria-hidden="true">' +
+      (body[kind] || "") + "</svg>";
+  }
+
+  /**
+   * One chip in the game summary. Boolean rules include an on/off word for
+   * screen readers; the icon and short label stay visible.
+   * @param {Object} item
+   * @return {string}
+   */
+  function statusItemHTML(item) {
+    var mark = item.suit
+      ? '<span class="play-status__suit is-' + String(item.suit).toLowerCase() +
+        '" aria-hidden="true">' + (SUIT_SYMBOL[item.suit] || "") + "</span>"
+      : statusIcon(item.icon);
+    var spoken = item.flag == null
+      ? ""
+      : '<span class="visually-hidden"> ' + (item.flag ? "on" : "off") + "</span>";
+    var prefix = item.label
+      ? '<span class="visually-hidden">' + item.label + " </span>"
+      : "";
+    var stateClass = item.flag == null ? "" : (item.flag ? " is-on" : " is-off");
+    return '<li class="play-status__item' + stateClass + '">' + mark + prefix +
+      "<span>" + item.text + "</span>" + spoken + "</li>";
+  }
+
+  function renderStatusbar() {
     var el = document.getElementById("play-statusbar");
     if (!el) return;
     if (state.status === "finished") {
@@ -840,21 +878,38 @@
         });
         loser = lp ? lp.username : state.loser_id;
       }
-      el.textContent =
-        "Game over" + (loser ? ". Fool: " + loser : "") + ".";
+      var over = "Game over" + (loser ? ". Fool: " + loser : "") + ".";
+      if (el.dataset.sig === over) return;
+      el.dataset.sig = over;
+      el.textContent = over;
       return;
     }
-    var partsArr = [modeLabel()];
-    partsArr.push("Phase: " + phaseEn(rt && rt.phase));
-    partsArr.push("Deck: " + (state.deck_remaining != null ? state.deck_remaining : 0));
+    var deck = state.deck_remaining != null ? state.deck_remaining : 0;
+    var items = [
+      {
+        icon: state.transferable ? "transfer" : "throw",
+        text: state.transferable ? "Transfer" : "Throw-in",
+      },
+      { icon: "deck", text: String(deck), label: "Deck" },
+    ];
     if (state.trump_card) {
-      partsArr.push("Trump: " + suitNameEn(state.trump_card.suit));
+      items.push({
+        suit: state.trump_card.suit,
+        text: suitNameEn(state.trump_card.suit),
+        label: "Trump",
+      });
     }
-    partsArr.push("Table rows: " + (state.table ? state.table.length : 0));
-    if (me) {
-      partsArr.push("You: " + me.username);
-    }
-    el.textContent = partsArr.join(" · ");
+    items.push({ icon: "neighbors", text: "Neighbors", flag: !!state.neighbor_throw_only });
+    items.push({ icon: "bots", text: "Bots", flag: !!state.fill_with_bots });
+    items.push({ icon: "signals", text: "Signals", flag: state.share_hand_signals !== false });
+    var sig = items.map(function (item) {
+      return (item.icon || item.suit || "") + ":" + item.text + ":" +
+        (item.flag == null ? "" : item.flag ? "1" : "0");
+    }).join("|");
+    if (el.dataset.sig === sig) return;
+    el.dataset.sig = sig;
+    el.innerHTML = '<ul class="play-status" aria-label="Game">' +
+      items.map(statusItemHTML).join("") + "</ul>";
   }
 
   function renderMyRole(uid, rt) {

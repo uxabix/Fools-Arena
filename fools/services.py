@@ -1311,6 +1311,7 @@ def serialize_game(game: Game, viewer: User) -> dict:
         "status": game.status,
         "transferable": bool(game.lobby.settings.is_transferable),
         "neighbor_throw_only": bool(game.lobby.settings.neighbor_throw_only),
+        "fill_with_bots": bool(game.lobby.settings.fill_with_bots),
         "share_hand_signals": bool(game.lobby.settings.share_hand_signals),
         "trump_card": _card_json(trump),
         "trump_in_deck": trump_in_deck,

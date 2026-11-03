@@ -110,6 +110,7 @@ class TestGameLobbyAPI:
         assert detail.data["runtime"]["pending_ids"] == []
         assert detail.data["transferable"] is False
         assert detail.data["neighbor_throw_only"] is False
+        assert detail.data["fill_with_bots"] is False
         assert detail.data["public_events"] == []
         assert detail.data["can_rematch"] is False
         me = next(p for p in detail.data["players"] if p["user_id"] == str(test_user.id))
