@@ -106,7 +106,8 @@ class TestTemplateAuth:
         client.force_login(test_user)
         html = client.get(reverse("profile")).content.decode()
         assert "Games &amp; lobbies" not in html
-        assert "Messages" in html
+        assert "Chat" in html
+        assert ">Messages<" not in html
         assert "Find a game" in html
         assert "🃏" not in html
         assert "💬" not in html

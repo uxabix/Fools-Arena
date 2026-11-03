@@ -107,6 +107,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "Fools_Arena.context_processors.asset_versions",
+                "Fools_Arena.context_processors.chat_unread",
             ],
         },
     },

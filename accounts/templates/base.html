@@ -25,7 +25,15 @@
                     <a href="{% url 'fools-lobby-list-page' %}"
                        class="site-nav__link{% if request.resolver_match.view_name|default:''|slice:':6' == 'fools-' %} is-active{% endif %}">Games</a>
                     <a href="{% url 'chat:inbox' %}"
-                       class="site-nav__link{% if request.resolver_match.namespace == 'chat' %} is-active{% endif %}">Chat</a>
+                       class="site-nav__link{% if request.resolver_match.namespace == 'chat' %} is-active{% endif %}">
+                      Chat
+                      {% if chat_unread_count %}
+                      <span class="chat-unread">
+                        <span aria-hidden="true">{{ chat_unread_label }}</span>
+                        <span class="visually-hidden">{{ chat_unread_count }} unread</span>
+                      </span>
+                      {% endif %}
+                    </a>
                     <a href="{% url 'profile' %}"
                        class="site-nav__link{% if request.resolver_match.view_name == 'profile' %} is-active{% endif %}">Profile</a>
                     {% else %}

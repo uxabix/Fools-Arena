@@ -1288,9 +1288,34 @@
   }
 
   var tableChatReady = false;
+  var tableThread = null;
+
+  function tableChatOpen() {
+    var panel = document.getElementById("play-chat");
+    return !!(panel && panel.classList.contains("is-open"));
+  }
+
+  function paintChatBadge(count) {
+    var badge = document.getElementById("play-chat-unread");
+    if (!badge) return;
+    while (badge.firstChild) badge.removeChild(badge.firstChild);
+    if (!count) {
+      badge.hidden = true;
+      return;
+    }
+    badge.hidden = false;
+    var num = document.createElement("span");
+    num.setAttribute("aria-hidden", "true");
+    num.textContent = count > 99 ? "99+" : String(count);
+    var sr = document.createElement("span");
+    sr.className = "visually-hidden";
+    sr.textContent = count === 1 ? "1 new message" : count + " new messages";
+    badge.appendChild(num);
+    badge.appendChild(sr);
+  }
 
   function ensureTableChat(lobbyId) {
-    if (tableChatReady || !lobbyId) return;
+    if (tableChatReady || !lobbyId || !window.FoolsChat) return;
     tableChatReady = true;
     var section = document.getElementById("play-chat");
     var log = document.getElementById("play-chat-log");
@@ -1301,32 +1326,40 @@
     section.hidden = false;
     wireChatToggle();
     var url = "/api/fools/lobbies/" + lobbyId + "/messages/";
+    tableThread = window.FoolsChat.bind({
+      log: log,
+      jump: document.getElementById("play-chat-jump"),
+      input: input,
+      selfId: uidStr,
+      hasOlder: false,
+      isFollowing: tableChatOpen,
+      onUnseen: paintChatBadge,
+      onSeen: function (message) {
+        if (tableThread && tableThread.chatId()) {
+          window.FoolsChat.markRead(tableThread.chatId(), message && message.id);
+        }
+      },
+      fetchOlder: function (beforeId) {
+        return api(
+          "GET",
+          url + "?before=" + encodeURIComponent(beforeId) + "&limit=40&envelope=1"
+        ).then(function (page) {
+          return { messages: (page && page.results) || [], has_older: !!(page && page.has_older) };
+        });
+      },
+    });
 
-    function appendMessage(message) {
-      if (!message || !message.id) return;
-      if (log.querySelector('[data-id="' + message.id + '"]')) return;
-      var line = document.createElement("div");
-      var system = message.kind === "system";
-      line.className = system ? "game-chat-line game-chat-line--system" : "game-chat-line";
-      line.dataset.id = message.id;
-      if (system) {
-        var label = document.createElement("span");
-        label.className = "visually-hidden";
-        label.textContent = "System. ";
-        line.appendChild(label);
-        line.appendChild(document.createTextNode(message.content || ""));
-      } else {
-        line.textContent = (message.username || "Player") + ": " + (message.content || "");
-      }
-      log.appendChild(line);
-      log.scrollTop = log.scrollHeight;
+    function loadThread(forceScroll) {
+      return api("GET", url + "?limit=40&envelope=1").then(function (page) {
+        if (page && page.chat_id) tableThread.setChatId(page.chat_id);
+        tableThread.syncLatest((page && page.results) || [], !!(page && page.has_older), !!forceScroll);
+        if (error) error.textContent = "";
+      }).catch(function (e) {
+        if (error) error.textContent = e.message || "Could not load chat.";
+      });
     }
 
-    api("GET", url).then(function (rows) {
-      (rows || []).forEach(appendMessage);
-    }).catch(function (e) {
-      if (error) error.textContent = e.message || "Could not load chat.";
-    });
+    loadThread(false);
 
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -1335,7 +1368,7 @@
       if (error) error.textContent = "";
       api("POST", url, { content: content }).then(function (message) {
         input.value = "";
-        appendMessage(message);
+        tableThread.append(message, true);
       }).catch(function (e) {
         if (error) error.textContent = e.message || "Could not send.";
       });
@@ -1351,25 +1384,24 @@
       if (!text) {
         note.hidden = true;
         note.textContent = "";
+        note.classList.remove("is-down");
         return;
       }
       note.hidden = false;
       note.textContent = text;
+      note.classList.toggle("is-down", text.indexOf("Reconnecting") === 0);
     }
 
     function connectChat() {
       var token = ++chatToken;
-      if (chatRetries > 0) setChatLink("Reconnecting to chat…");
+      if (chatRetries > 0) setChatLink("Reconnecting…");
+      else setChatLink("Connecting…");
       var socket = new WebSocket(proto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
       socket.onopen = function () {
         if (token !== chatToken) return;
         chatRetries = 0;
         setChatLink("");
-        api("GET", url).then(function (rows) {
-          (rows || []).forEach(appendMessage);
-        }).catch(function (e) {
-          if (error) error.textContent = e.message || "Could not load chat.";
-        });
+        loadThread(false);
       };
       socket.onmessage = function (ev) {
         var message = null;
@@ -1378,16 +1410,15 @@
         } catch (ignore) {
           message = null;
         }
-        if (message && message.event === "lobby_chat") appendMessage(message.payload || {});
+        if (message && message.event === "lobby_chat") tableThread.append(message.payload || {}, false);
       };
       socket.onclose = function () {
         if (token !== chatToken) return;
-        setChatLink("Chat disconnected.");
+        setChatLink("Reconnecting…");
         var delay = Math.min(10000, 800 * Math.pow(2, Math.min(chatRetries, 4)));
         chatRetries += 1;
         window.setTimeout(function () {
           if (token !== chatToken) return;
-          setChatLink("Reconnecting to chat…");
           connectChat();
         }, delay);
       };
@@ -2014,6 +2045,8 @@
   }
 
   function render(previousTable) {
+    var surrenderButton = document.getElementById("btn-surrender");
+    if (surrenderButton) surrenderButton.hidden = !state || state.status !== "in_progress";
     if (!state) return;
     previousTable = previousTable || [];
     var uid = uidStr();
@@ -2058,6 +2091,8 @@
     renderResult(uid);
     applyPublicEvents();
     paintBadge();
+    placeLog();
+    placeChat();
   }
 
   var ACTION_LABEL = {
@@ -2809,6 +2844,23 @@
     }
   }
 
+  function wireSurrender() {
+    var button = document.getElementById("btn-surrender");
+    if (!button || button.dataset.wired === "1") return;
+    button.dataset.wired = "1";
+    button.addEventListener("click", function () {
+      if (!state || state.status !== "in_progress") return;
+      if (!window.confirm("Surrender this game? You will lose, but stay in the lobby.")) return;
+      button.disabled = true;
+      api("POST", BASE + "surrender/", {})
+        .then(function (next) { return applyState(next, true); })
+        .catch(function (e) {
+          setErr(e.message || "Could not surrender the game.");
+        })
+        .then(function () { button.disabled = false; });
+    });
+  }
+
   function setLink(text) {
     var el = document.getElementById("play-link");
     if (!el) return;
@@ -2887,28 +2939,126 @@
     var panel = document.getElementById("play-chat");
     if (!button || !panel || button.dataset.wired === "1") return;
     button.dataset.wired = "1";
-    function setOpen(open) {
+    var storageKey = "fools-chat-open";
+
+    function setOpen(open, focus) {
       panel.classList.toggle("is-open", open);
       panel.hidden = false;
       button.setAttribute("aria-expanded", open ? "true" : "false");
-      button.textContent = open ? "Close chat" : "Chat";
-      if (!open) return;
+      button.setAttribute("aria-label", open ? "Hide chat" : "Show chat");
+      if (open && tableThread) tableThread.scrollToEnd();
+      placeChat();
+      if (!open || !focus) return;
       var input = document.getElementById("play-chat-input");
       if (input) input.focus();
     }
+
+    var stored = null;
+    try {
+      stored = window.sessionStorage.getItem(storageKey);
+    } catch (ignore) {}
+    var open = stored === null
+      ? !window.matchMedia("(max-width: 899px)").matches
+      : stored === "1";
+    setOpen(open, false);
     button.addEventListener("click", function () {
-      setOpen(!panel.classList.contains("is-open"));
+      var next = !panel.classList.contains("is-open");
+      setOpen(next, true);
+      try {
+        window.sessionStorage.setItem(storageKey, next ? "1" : "0");
+      } catch (ignore) {}
     });
     panel.addEventListener("keydown", function (ev) {
-      if (ev.key === "Escape") {
-        setOpen(false);
+      if (ev.key === "Escape" && panel.classList.contains("is-open")) {
+        setOpen(false, false);
         button.focus();
+        try {
+          window.sessionStorage.setItem(storageKey, "0");
+        } catch (ignore) {}
       }
+    });
+  }
+
+  /**
+   * Put the chat on the felt just under the discard pile.
+   * The pile's own box is not changed.
+   */
+  function placeChat() {
+    var panel = document.getElementById("play-chat");
+    var pile = document.getElementById("discard-pile");
+    var felt = panel && panel.closest(".play-felt");
+    if (!panel || !pile || !felt) return;
+    var feltBox = felt.getBoundingClientRect();
+    var pileBox = pile.getBoundingClientRect();
+    if (!feltBox.height) return;
+    var borderRight = felt.offsetWidth - felt.clientWidth - felt.clientLeft;
+    var top = pileBox.bottom - feltBox.top - felt.clientTop + 4;
+    var right = feltBox.right - borderRight - pileBox.right;
+    if (right < 4) right = 4;
+    panel.style.top = Math.round(top) + "px";
+    panel.style.right = Math.round(right) + "px";
+    panel.style.left = "auto";
+  }
+
+  /**
+   * Put the log on the felt just under the deck. The deck's own box is not changed,
+   * so opening or closing the log cannot move it.
+   */
+  function placeLog() {
+    var log = document.getElementById("play-log");
+    var deck = document.getElementById("deck-trump-corner");
+    var felt = log && log.closest(".play-felt");
+    if (!log || !deck || !felt) return;
+    var feltBox = felt.getBoundingClientRect();
+    var deckBox = deck.getBoundingClientRect();
+    if (!feltBox.height || !deckBox.height) return;
+    var top = deckBox.bottom - feltBox.top - felt.clientTop + 4;
+    var left = deckBox.left - feltBox.left - felt.clientLeft;
+    if (left < 4) left = 4;
+    log.style.top = Math.round(top) + "px";
+    log.style.left = Math.round(left) + "px";
+  }
+
+  /**
+   * Show or hide the action log under the deck. The choice stays for this tab.
+   */
+  function wireLogToggle() {
+    var button = document.getElementById("play-log-toggle");
+    var list = document.getElementById("play-history");
+    if (!button || !list || button.dataset.wired === "1") return;
+    button.dataset.wired = "1";
+    var storageKey = "fools-log-open";
+
+    function setOpen(open) {
+      var log = button.closest(".play-log");
+      list.hidden = !open;
+      if (log) log.classList.toggle("is-open", open);
+      button.setAttribute("aria-expanded", open ? "true" : "false");
+      button.setAttribute("aria-label", open ? "Hide log" : "Show log");
+    }
+
+    var stored = null;
+    try {
+      stored = window.sessionStorage.getItem(storageKey);
+    } catch (ignore) {}
+    var open = stored === null
+      ? !window.matchMedia("(max-width: 899px)").matches
+      : stored === "1";
+    setOpen(open);
+    button.addEventListener("click", function () {
+      var next = list.hidden;
+      setOpen(next);
+      try {
+        window.sessionStorage.setItem(storageKey, next ? "1" : "0");
+      } catch (ignore) {}
     });
   }
 
   document.addEventListener("DOMContentLoaded", function () {
     wireChatToggle();
+    wireLogToggle();
+    placeLog();
+    placeChat();
     loadHandSort();
     paintSending();
     paintSortButton();
@@ -2927,12 +3077,15 @@
         var uid = uidStr();
         var rt = (state && state.runtime) || {};
         renderHand(uid, viewer(uid), rt, state && state.trump_card ? state.trump_card.suit : null);
+        placeLog();
+        placeChat();
       }, 100);
     });
     loadHistory();
     paintHistory();
     wireActionButtons();
     wireLeave();
+    wireSurrender();
     connectGameSocket();
 
     api("GET", "/api/accounts/auth/profile/")

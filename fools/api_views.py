@@ -14,7 +14,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from chat.models import Message
-from chat.services import assert_can_send_message, get_lobby_chat, message_payload
+from chat.services import (
+    assert_can_send_message,
+    broadcast_chat_message,
+    get_lobby_chat,
+    message_page,
+    message_payload,
+    page_limit,
+    parse_message_id,
+)
 from fools.models import Game, Lobby, LobbyPlayer
 from fools.realtime import broadcast_lobby
 from fools.serializers import (
@@ -43,6 +51,7 @@ from fools.services import (
     serialize_lobby,
     set_ready,
     start_game,
+    surrender_game,
     update_lobby_settings,
     take_table,
     transfer_attack,
@@ -414,6 +423,21 @@ class GameLeaveAPI(APIView):
         return Response(serialize_game(game, request.user))
 
 
+class GameSurrenderAPI(APIView):
+    """Forfeit the match while remaining seated in the lobby."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, game_id):
+        game = get_object_or_404(Game, id=game_id)
+        try:
+            surrender_game(game, request.user)
+        except GameError as e:
+            return _err(e)
+        game.refresh_from_db()
+        return Response(serialize_game(game, request.user))
+
+
 class GameBitoAPI(APIView):
     """Successful round: discard defended cards and rotate attacker/defender."""
 
@@ -441,13 +465,25 @@ class LobbyMessagesAPI(APIView):
         if not lobby.players.filter(user=request.user).exclude(status="left").exists():
             return Response(status=status.HTTP_403_FORBIDDEN)
         chat = get_lobby_chat(lobby)
-        msgs = list(
-            Message.objects.filter(chat=chat)
-            .select_related("sender")
-            .order_by("-sent_at")[:100]
+        try:
+            before_id = parse_message_id(request.GET.get("before"))
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        rows, has_older = message_page(
+            chat,
+            before_id=before_id,
+            limit=page_limit(request.GET.get("limit"), default=40),
         )
-        msgs.reverse()
-        return Response([message_payload(m) for m in msgs])
+        payload = [message_payload(m) for m in rows]
+        if request.GET.get("envelope") == "1":
+            return Response(
+                {
+                    "chat_id": str(chat.pk),
+                    "results": payload,
+                    "has_older": has_older,
+                }
+            )
+        return Response(payload)
 
     def post(self, request, lobby_id):
         lobby = get_object_or_404(Lobby, id=lobby_id)
@@ -467,4 +503,5 @@ class LobbyMessagesAPI(APIView):
         )
         payload = message_payload(m)
         broadcast_lobby(lobby.id, "lobby_chat", payload)
+        broadcast_chat_message(m)
         return Response(payload, status=status.HTTP_201_CREATED)

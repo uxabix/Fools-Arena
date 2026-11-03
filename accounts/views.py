@@ -22,6 +22,7 @@ from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import render, redirect
 from django.urls import reverse_lazy
 from django.utils.encoding import force_str
@@ -297,7 +298,34 @@ def profile_view(request):
         "current_game": current_game,
         "active_lobby": active_lobby,
         "stats": stats,
-        "initials": _profile_initials(user.username),
+        "initials": user.display_initials(),
+    })
+
+
+@login_required
+def player_profile_view(request, username):
+    """Show another player's public profile.
+
+    Signed-in members can open this page. It shows the username, avatar,
+    and finished-game record. It does not show email, password controls,
+    or where that player is sitting right now. Bots and inactive accounts
+    are not found.
+
+    Args:
+        request (HttpRequest): Current request.
+        username (str): Account name from the URL.
+
+    Returns:
+        HttpResponse: Public profile, or 404 when the account is not public.
+    """
+    player = User.objects.filter(username__iexact=username, is_active=True, is_bot=False).first()
+    if player is None:
+        raise Http404("No player with that username.")
+    return render(request, "accounts/player_profile.html", {
+        "player": player,
+        "is_self": player.pk == request.user.pk,
+        "stats": player.get_game_statistics(),
+        "initials": player.display_initials(),
     })
 
 
@@ -331,23 +359,6 @@ def _send_profile_password_reset(request, user):
     )
     logger.info("Password reset requested from profile: id=%s", user.pk)
     return ""
-
-
-def _profile_initials(username):
-    """Return one or two letters to show when no avatar image is set.
-
-    Args:
-        username (str): Account name.
-
-    Returns:
-        str: Uppercase initials, or a question mark when the name has none.
-    """
-    letters = [character for character in username if character.isalnum()]
-    if not letters:
-        return "?"
-    if len(letters) == 1:
-        return letters[0].upper()
-    return (letters[0] + letters[1]).upper()
 
 
 @csrf_protect

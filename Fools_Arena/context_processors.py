@@ -26,4 +26,27 @@ def asset_versions(_request):
         "asset_lobby_detail_js_v": _mtime(
             static_root / "fools" / "static" / "fools" / "js" / "lobby_detail.js"
         ),
+        "asset_chat_thread_js_v": _mtime(
+            static_root / "fools" / "static" / "fools" / "js" / "chat_thread.js"
+        ),
+        "asset_chat_room_js_v": _mtime(
+            static_root / "chat" / "static" / "chat" / "js" / "room.js"
+        ),
+        "asset_chat_start_js_v": _mtime(
+            static_root / "chat" / "static" / "chat" / "js" / "start_direct.js"
+        ),
+    }
+
+
+def chat_unread(request):
+    """Expose the signed-in user's unread chat total for navigation."""
+    user = getattr(request, "user", None)
+    if not user or not getattr(user, "is_authenticated", False):
+        return {"chat_unread_count": 0, "chat_unread_label": ""}
+    from chat.services import unread_badge_label, unread_message_count
+
+    count = unread_message_count(user)
+    return {
+        "chat_unread_count": count,
+        "chat_unread_label": unread_badge_label(count),
     }

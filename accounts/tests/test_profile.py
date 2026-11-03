@@ -35,6 +35,24 @@ class TestProfilePage:
         assert "Return to lobby" in html
         assert reverse("fools-lobby-detail-page", args=[basic_lobby.id]) in html
 
+    def test_public_profile_hides_email(self, client, test_user, second_user):
+        """Another player's page shows the record and not the account email."""
+        second_user.email = "hidden@example.com"
+        second_user.save(update_fields=["email"])
+        client.force_login(test_user)
+        html = client.get(reverse("player-profile", args=[second_user.username])).content.decode()
+        assert second_user.username in html
+        assert "hidden@example.com" not in html
+        assert "Current password" not in html
+        assert 'name="other_username"' in html
+
+    def test_public_profile_rejects_bots(self, client, test_user, user_factory):
+        """Bots do not have a public profile."""
+        bot = user_factory(username="Tablebot", is_bot=True)
+        client.force_login(test_user)
+        response = client.get(reverse("player-profile", args=[bot.username]))
+        assert response.status_code == 404
+
     def test_profile_returns_to_game(self, client, test_user, basic_game):
         """An in-progress match is preferred over a lobby link."""
         GamePlayer.objects.create(

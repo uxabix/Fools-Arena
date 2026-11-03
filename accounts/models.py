@@ -93,6 +93,19 @@ class User(AbstractUser):
         full_name = self.get_full_name()
         return full_name if full_name else self.username
 
+    def display_initials(self):
+        """Return one or two letters for an avatar that has no image.
+
+        Returns:
+            str: Uppercase letters from the username, or ``?`` when it has none.
+        """
+        letters = [character for character in (self.username or "") if character.isalnum()]
+        if not letters:
+            return "?"
+        if len(letters) == 1:
+            return letters[0].upper()
+        return (letters[0] + letters[1]).upper()
+
     def has_avatar(self):
         """Check whether the user has an avatar set.
 

@@ -211,6 +211,12 @@ class Chat(models.Model):
         """
         if not self.is_direct_message():
             return None
+        cached = getattr(self, "_prefetched_objects_cache", {}).get("chatparticipant_set")
+        if cached is not None:
+            for row in cached:
+                if row.user_id != user.pk:
+                    return row.user
+            return None
         return self.get_participants().exclude(pk=user.pk).first()
 
 
@@ -218,6 +224,8 @@ class ChatParticipant(models.Model):
     """Represents a user's membership in a chat with assigned permissions.
 
     Each user can belong to multiple chats and have different roles in each.
+    ``last_read_at`` is how far this member has read. It is not shown to
+    other people as a read receipt.
     """
 
     ROLE_CHOICES = [
@@ -231,6 +239,11 @@ class ChatParticipant(models.Model):
     user = models.ForeignKey('accounts.User', related_name='chat_participations', on_delete=models.CASCADE)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
     joined_at = models.DateTimeField(auto_now_add=True)
+    last_read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Newest moment this member has caught up to. Empty means nothing is read.",
+    )
 
     class Meta:
         verbose_name = "Chat Participant"

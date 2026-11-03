@@ -71,6 +71,7 @@
   var chatSection = document.getElementById("lobby-chat");
   var chatEmpty = document.getElementById("chat-empty");
   var chatLog = document.getElementById("chat-log");
+  var chatStatus = document.getElementById("chat-status");
   var chatForm = document.getElementById("chat-form");
   var chatInput = document.getElementById("chat-input");
   var chatSend = document.getElementById("chat-send");
@@ -162,6 +163,22 @@
 
   function setConnection(mode) {
     connectionMode = mode;
+    if (chatStatus) {
+      chatStatus.classList.toggle("is-down", mode === "lost");
+      if (mode === "lost") {
+        chatStatus.hidden = false;
+        chatStatus.textContent = "Reconnecting…";
+      } else if (mode === "connecting") {
+        chatStatus.hidden = false;
+        chatStatus.textContent = "Connecting…";
+      } else if (mode === "clear") {
+        chatStatus.hidden = false;
+        chatStatus.textContent = "Connected";
+      } else {
+        chatStatus.hidden = true;
+        chatStatus.textContent = "";
+      }
+    }
     if (mode === "clear") {
       connection.hidden = true;
       return;
@@ -364,6 +381,23 @@
       }
       if (uuidEq(player.user_id, uidStr())) identity.appendChild(badge("You", "lobby-badge"));
       if (player.is_bot) identity.appendChild(badge("Bot", "lobby-badge"));
+      if (!player.is_bot && !uuidEq(player.user_id, uidStr())) {
+        var messageBtn = document.createElement("button");
+        messageBtn.type = "button";
+        messageBtn.className = "game-btn game-btn--secondary lobby-player__message";
+        messageBtn.textContent = "Message";
+        messageBtn.setAttribute("aria-label", "Message " + (player.username || "player"));
+        messageBtn.addEventListener("click", function () {
+          messageBtn.disabled = true;
+          api("POST", "/api/chat/chats/direct/", { other_user_id: player.user_id }).then(function (chat) {
+            window.location.href = "/chat/" + chat.id + "/";
+          }).catch(function () {
+            messageBtn.disabled = false;
+            readyLive.textContent = "Could not open a chat with " + (player.username || "that player") + ".";
+          });
+        });
+        identity.appendChild(messageBtn);
+      }
       var status = document.createElement("span");
       status.className = "lobby-player__status lobby-player__status--" + (player.status || "waiting");
       status.textContent = statusLabel(player.status);
@@ -547,87 +581,46 @@
     });
   }
 
-  function nearBottom(node) {
-    return node.scrollHeight - node.scrollTop - node.clientHeight < 48;
-  }
-
-  function formatSentAt(value) {
-    var date = new Date(value);
-    if (isNaN(date.getTime())) return "";
-    var time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (date.toDateString() === new Date().toDateString()) return time;
-    return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
-  }
-
-  function messageNode(message) {
-    var system = message.kind === "system";
-    var line = document.createElement("div");
-    line.className = system ? "game-chat-line game-chat-line--system" : "game-chat-line";
-    line.setAttribute("data-message-id", String(message.id));
-    var meta = document.createElement("p");
-    meta.className = "game-chat-line__meta";
-    var name = document.createElement("span");
-    name.className = "game-chat-line__name";
-    name.textContent = system ? "System" : (message.username || "Player");
-    meta.appendChild(name);
-    var stamp = formatSentAt(message.sent_at);
-    if (stamp) {
-      var time = document.createElement("time");
-      time.dateTime = message.sent_at;
-      time.textContent = stamp;
-      meta.appendChild(time);
-    }
-    var body = document.createElement("p");
-    body.className = "game-chat-line__body";
-    body.textContent = message.content || "";
-    line.appendChild(meta);
-    line.appendChild(body);
-    return line;
-  }
-
-  function renderMessages(rows, forceScroll) {
-    var stick = !!forceScroll || nearBottom(chatLog);
-    var previousTop = chatLog.scrollTop;
-    var existing = [];
-    chatLog.querySelectorAll("[data-message-id]").forEach(function (node) {
-      existing.push(node.getAttribute("data-message-id"));
-    });
-    var incoming = rows.map(function (row) { return String(row.id); });
-    var samePrefix = existing.length > 0 && existing.length <= incoming.length;
-    for (var i = 0; samePrefix && i < existing.length; i += 1) {
-      if (existing[i] !== incoming[i]) samePrefix = false;
-    }
-    if (samePrefix) {
-      for (var j = existing.length; j < rows.length; j += 1) chatLog.appendChild(messageNode(rows[j]));
-    } else {
-      chatLog.innerHTML = "";
-      rows.forEach(function (row) { chatLog.appendChild(messageNode(row)); });
-      if (!stick) chatLog.scrollTop = previousTop;
-    }
-    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
-    syncChatEmpty(rows.length > 0);
-    chatLoaded = true;
-  }
+  var chatThread = window.FoolsChat ? window.FoolsChat.bind({
+    log: chatLog,
+    jump: document.getElementById("chat-jump"),
+    input: chatInput,
+    selfId: uidStr,
+    hasOlder: false,
+    isFollowing: function () { return !chatSection.hidden; },
+    onCount: function (count) {
+      chatEmpty.hidden = count > 0;
+      chatLog.hidden = count === 0;
+    },
+    onSeen: function (message) {
+      if (chatThread && chatThread.chatId()) {
+        window.FoolsChat.markRead(chatThread.chatId(), message && message.id);
+      }
+    },
+    fetchOlder: function (beforeId) {
+      return api(
+        "GET",
+        API + "messages/?before=" + encodeURIComponent(beforeId) + "&limit=40&envelope=1"
+      ).then(function (page) {
+        return { messages: (page && page.results) || [], has_older: !!(page && page.has_older) };
+      });
+    },
+  }) : null;
 
   function appendMessage(message, forceScroll) {
-    if (!message || message.id == null) return;
-    var id = String(message.id);
-    if (chatLog.querySelector('[data-message-id="' + id + '"]')) return;
-    var stick = !!forceScroll || nearBottom(chatLog);
-    chatLog.appendChild(messageNode(message));
-    syncChatEmpty(true);
+    if (!chatThread || !message || message.id == null) return;
+    chatThread.append(message, !!forceScroll);
     chatLoaded = true;
-    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
-  }
-
-  function syncChatEmpty(hasMessages) {
-    chatEmpty.hidden = hasMessages;
-    chatLog.hidden = !hasMessages;
   }
 
   function loadChat(forceScroll) {
-    return api("GET", API + "messages/").then(function (rows) {
-      renderMessages(rows || [], !!forceScroll);
+    return api("GET", API + "messages/?limit=40&envelope=1").then(function (page) {
+      var rows = (page && page.results) || [];
+      if (chatThread) {
+        if (page && page.chat_id) chatThread.setChatId(page.chat_id);
+        chatThread.syncLatest(rows, !!(page && page.has_older), !!forceScroll);
+      }
+      chatLoaded = true;
       clearError(chatError);
     }).catch(function (error) {
       showError(chatError, errorText(error));

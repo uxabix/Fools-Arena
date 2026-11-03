@@ -94,8 +94,10 @@
 
   <section id="lobby-chat" class="game-panel lobby-chat" aria-labelledby="chat-heading" hidden>
     <h2 id="chat-heading" class="game-subtitle">Lobby chat</h2>
+    <p id="chat-status" class="chat-connection" role="status" hidden></p>
     <p id="chat-empty" class="lobby-lead" hidden>No messages yet.</p>
-    <div id="chat-log" class="game-chat-log" role="log" aria-relevant="additions" aria-label="Lobby chat history" tabindex="0"></div>
+    <div id="chat-log" class="game-chat-log game-chat-log--thread" role="log" aria-relevant="additions" aria-label="Lobby chat history" tabindex="0"></div>
+    <button type="button" id="chat-jump" class="game-btn game-btn--secondary chat-jump" hidden>New messages</button>
     <form id="chat-form" class="game-chat-form">
       <label class="visually-hidden" for="chat-input">Message</label>
       <input id="chat-input" name="content" type="text" maxlength="4000" placeholder="Message…" autocomplete="off" />
@@ -176,5 +178,6 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'fools/js/chat_thread.js' %}?v={{ asset_chat_thread_js_v }}"></script>
 <script src="{% static 'fools/js/lobby_detail.js' %}?v={{ asset_lobby_detail_js_v }}"></script>
 {% endblock %}

@@ -44,6 +44,7 @@ from fools.models import (
     Turn,
 )
 from chat.services import (
+    broadcast_chat_message,
     get_lobby_chat,
     message_payload,
     record_lobby_notice,
@@ -1017,6 +1018,7 @@ def update_lobby_settings(lobby: Lobby, user: User, changes: dict) -> Lobby:
 
     def publish():
         broadcast_lobby(lobby_id, "lobby_chat", chat_payload)
+        broadcast_chat_message(notice)
         broadcast_lobby(lobby_id, "settings_changed", {"user_id": actor_id})
         logger.info(
             "Lobby settings changed lobby=%s user=%s fields=%s",
@@ -1837,4 +1839,41 @@ def abandon_game(game: Game, user: User) -> Game:
     broadcast_game(game.id, "game_finished", {"loser_id": str(user.id)})
     broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
     publish_lobby_list(lobby.id)
+    return game
+
+
+@transaction.atomic
+def surrender_game(game: Game, user: User) -> Game:
+    """Forfeit an in-progress match while keeping the player in its lobby.
+
+    Args:
+        game: Match the player is seated in.
+        user: Player who is surrendering.
+
+    Returns:
+        The same game after the forfeit, when one was applied.
+
+    Raises:
+        GameError: When ``user`` is not seated.
+    """
+    if not game.players.filter(user=user).exists():
+        raise GameError("Not a player in this game", "forbidden")
+    if game.status != "in_progress":
+        return game
+    from fools.bots.runner import cancel_bots
+
+    cancel_bots(game.id)
+    game.status = "finished"
+    game.loser = user
+    game.finished_at = timezone.now()
+    game.save(update_fields=["status", "loser", "finished_at"])
+    lobby = game.lobby
+    release_lobby_bots(lobby)
+    LobbyPlayer.objects.filter(lobby=lobby, status="playing").update(status="waiting")
+    lobby.status = "waiting"
+    lobby.save(update_fields=["status"])
+    broadcast_game(game.id, "game_finished", {"loser_id": str(user.id)})
+    broadcast_lobby(lobby.id, "game_finished", {"game_id": str(game.id)})
+    publish_lobby_list(lobby.id)
+    logger.info("Game surrendered: game=%s player=%s lobby=%s", game.id, user.id, lobby.id)
     return game

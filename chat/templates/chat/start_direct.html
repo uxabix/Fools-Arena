@@ -1,14 +1,15 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}New direct chat — Fools Arena{% endblock %}
 
 {% block content %}
 <div class="game-page game-page--narrow">
-  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to inbox</a>
+  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to chats</a>
 
   <section class="game-panel">
-    <h1 class="game-title">Direct message</h1>
-    <p class="game-lead">Enter the other player's username (same as used to log in).</p>
+    <h1 class="game-title">New direct message</h1>
+    <p class="game-lead">Search for a player by username, then open the conversation.</p>
 
     <form method="post" class="game-form game-form--stacked" novalidate>
       {% csrf_token %}
@@ -19,4 +20,8 @@
     </form>
   </section>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'chat/js/start_direct.js' %}?v={{ asset_chat_start_js_v }}"></script>
 {% endblock %}

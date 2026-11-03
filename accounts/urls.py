@@ -17,6 +17,7 @@ from .views import (
     confirm_email_view,
     login_view,
     logout_view,
+    player_profile_view,
     profile_view,
     register_done_view,
     register_view,
@@ -50,5 +51,6 @@ urlpatterns = [
         name='password-reset-complete',
     ),
     path('profile/', profile_view, name='profile'),
+    path('players/<str:username>/', player_profile_view, name='player-profile'),
     path('logout/', logout_view, name='logout'),
 ]

@@ -1,91 +1,51 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ title }} — Fools Arena{% endblock %}
 
 {% block content %}
 <div class="game-page chat-room-page">
-  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to inbox</a>
+  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to chats</a>
 
-  <section class="game-panel">
-    <h1 class="game-title">{{ title }}</h1>
+  <section class="game-panel" id="chat-room"
+           data-chat-id="{{ chat.pk }}"
+           data-self-id="{{ request.user.pk }}"
+           data-has-older="{% if has_older %}1{% else %}0{% endif %}"
+           aria-labelledby="chat-room-title">
+    <h1 id="chat-room-title" class="game-title">{{ title }}</h1>
+    <p id="chat-connection" class="chat-connection" role="status">Connecting…</p>
 
-    <div id="chat-log" class="game-chat-log game-chat-log--room" aria-live="polite">
+    <p id="chat-empty-hint" class="game-status"{% if messages_list %} hidden{% endif %}>No messages yet. Say hello!</p>
+    <div id="chat-log" class="game-chat-log game-chat-log--room game-chat-log--thread" role="log" aria-relevant="additions" aria-label="Conversation" tabindex="0">
       {% for m in messages_list %}
-      <div class="game-chat-line">
-        <strong>{{ m.sender.username }}</strong>
-        <span>{{ m.content }}</span>
-        <small class="game-chat-line__time">{{ m.sent_at|date:"Y-m-d H:i" }}</small>
+      <div class="game-chat-line{% if m.kind == 'system' %} game-chat-line--system{% elif m.is_mine %} is-mine{% endif %}"
+           data-message-id="{{ m.id }}"
+           data-sender-id="{{ m.sender_id }}"
+           data-sent-at="{{ m.sent_at_iso }}"
+           data-kind="{{ m.kind }}">
+        <p class="game-chat-line__meta">
+          <span class="game-chat-line__name">{{ m.author }}</span>
+          <time datetime="{{ m.sent_at_iso }}">{{ m.time_label }}</time>
+        </p>
+        <p class="game-chat-line__body">{{ m.content }}</p>
       </div>
-      {% empty %}
-      <p id="chat-empty-hint" class="game-status">No messages yet. Say hello!</p>
       {% endfor %}
     </div>
 
-    <form method="post" action="" id="chat-http-form" class="game-chat-form">
-      {% csrf_token %}
-      {% include "accounts/includes/form_fields.html" with form=form %}
-      <button type="submit" class="game-btn game-btn--primary">Send</button>
-    </form>
-  </section>
+    <button type="button" id="chat-jump" class="game-btn game-btn--secondary chat-jump" hidden>New messages</button>
 
-  <section class="game-panel game-panel--compact">
-    <h2 class="game-subtitle">Live updates</h2>
-    <p class="game-lead game-lead--compact">Optional WebSocket channel for instant delivery (same as API clients).</p>
-    <form id="chat-ws-form" class="game-chat-form">
-      <input id="chat-message-input" type="text" maxlength="10000" placeholder="WebSocket message…" autocomplete="off" aria-label="WebSocket message">
-      <button type="submit" class="game-btn game-btn--secondary">Send via WS</button>
+    <form method="post" action="" id="chat-form" class="game-chat-form">
+      {% csrf_token %}
+      <label class="visually-hidden" for="chat-input">Message</label>
+      <input id="chat-input" name="content" type="text" maxlength="10000" placeholder="Message…" autocomplete="off" required value="{{ form.content.value|default_if_none:'' }}" {% if form.content.errors %}aria-invalid="true" aria-describedby="chat-error"{% endif %} />
+      <button type="submit" id="chat-send" class="game-btn game-btn--primary">Send</button>
     </form>
+    <p id="chat-error" class="field-error" role="alert"{% if not form.content.errors %} hidden{% endif %}>{% if form.content.errors %}{{ form.content.errors.0 }}{% endif %}</p>
   </section>
 </div>
+{% endblock %}
 
-<script>
-(function () {
-  const chatId = "{{ chat.pk }}";
-  const scheme = "{{ ws_scheme }}";
-  const host = "{{ ws_host }}";
-  const chatSocket = new WebSocket(scheme + '://' + host + '/ws/chat/' + chatId + '/');
-
-  const log = document.querySelector('#chat-log');
-  const emptyHint = document.querySelector('#chat-empty-hint');
-
-  function appendLine(sender, content, sentAt) {
-    if (emptyHint) emptyHint.remove();
-    const div = document.createElement('div');
-    div.className = 'game-chat-line';
-    div.innerHTML = '<strong></strong> <span></span> <small class="game-chat-line__time"></small>';
-    div.querySelector('strong').textContent = sender + ':';
-    div.querySelector('span').textContent = ' ' + content;
-    div.querySelector('small').textContent = sentAt || '';
-    log.appendChild(div);
-    log.scrollTop = log.scrollHeight;
-  }
-
-  chatSocket.onmessage = function(e) {
-    const data = JSON.parse(e.data);
-    if (data.type === 'last_messages' && Array.isArray(data.messages)) {
-      data.messages.forEach(function (m) {
-        appendLine(m.sender, m.content, m.sent_at);
-      });
-      return;
-    }
-    if (data.type === 'error') {
-      appendLine('system', data.detail || 'Error', '');
-      return;
-    }
-    if (data.sender && data.content !== undefined) {
-      appendLine(data.sender, data.content, data.sent_at || '');
-    }
-  };
-
-  document.querySelector('#chat-ws-form').onsubmit = function(ev) {
-    ev.preventDefault();
-    const input = document.querySelector('#chat-message-input');
-    const v = (input.value || '').trim();
-    if (v && chatSocket.readyState === WebSocket.OPEN) {
-      chatSocket.send(JSON.stringify({ message: v }));
-      input.value = '';
-    }
-  };
-})();
-</script>
+{% block extra_js %}
+<script src="{% static 'fools/js/chat_thread.js' %}?v={{ asset_chat_thread_js_v }}"></script>
+<script src="{% static 'chat/js/room.js' %}?v={{ asset_chat_room_js_v }}"></script>
 {% endblock %}

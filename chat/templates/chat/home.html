@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if chat %}{{ title }} — {% endif %}Chat — Fools Arena{% endblock %}
+
+{% block content %}
+<div class="game-page chat-app{% if chat %} chat-app--open{% endif %}{% if chat and chat.is_direct_message %} chat-app--direct{% endif %}">
+  <section class="game-panel chat-app__list" aria-labelledby="chat-list-title">
+    <h1 id="chat-list-title" class="game-title">Chat</h1>
+
+    <nav class="chat-tabs" aria-label="Chat folders">
+      {% for folder in folders %}
+      <a href="{{ folder.href }}"{% if folder.current %} aria-current="page"{% endif %}>{{ folder.label }}</a>
+      {% endfor %}
+    </nav>
+
+    <form class="chat-tools" method="get" action="">
+      <input type="hidden" name="tab" value="{{ list_params.tab }}">
+      <label for="chat-search">Search
+        <input id="chat-search" name="q" type="search" value="{{ list_params.q }}" maxlength="80" placeholder="Player or chat name" autocomplete="off">
+      </label>
+      <label class="chat-tools__check" for="chat-unread-only">
+        <input id="chat-unread-only" name="unread" type="checkbox" value="1"{% if list_params.unread %} checked{% endif %}>
+        <span>Unread</span>
+      </label>
+      <label for="chat-sort">Sort
+        <select id="chat-sort" name="sort">
+          <option value="activity"{% if list_params.sort == "activity" %} selected{% endif %}>Last activity</option>
+          <option value="unread"{% if list_params.sort == "unread" %} selected{% endif %}>Unread first</option>
+          <option value="name"{% if list_params.sort == "name" %} selected{% endif %}>Name</option>
+        </select>
+      </label>
+      <button type="submit" class="game-btn game-btn--secondary">Apply</button>
+    </form>
+
+    <p class="game-toolbar">
+      <a href="{% url 'chat:start_direct' %}" class="game-btn game-btn--primary">New direct message</a>
+    </p>
+
+    {% if chat_rows %}
+    <ul class="game-lobby-list chat-inbox-list" aria-label="Chat list" data-sort="{{ list_params.sort }}">
+      {% for row in chat_rows %}
+      <li>
+        <a href="{{ row.href }}"{% if row.current %} aria-current="page"{% endif %}>
+          <span class="chat-row__avatar" aria-hidden="true">
+            <span>{{ row.initials }}</span>
+            {% if row.avatar_url %}<img src="{{ row.avatar_url }}" alt="">{% endif %}
+          </span>
+          <span class="chat-inbox-list__title">
+            {{ row.title }}
+            <span class="chat-row__kind">{{ row.folder_label }}</span>
+          </span>
+          <span class="chat-inbox-list__meta">
+            {% if row.unread %}
+            <span class="chat-unread">
+              <span aria-hidden="true">{{ row.unread_label }}</span>
+              <span class="visually-hidden">{{ row.unread }} unread</span>
+            </span>
+            {% endif %}
+            {% if row.when %}
+            <time datetime="{{ row.when_iso }}">{{ row.when }}</time>
+            {% endif %}
+          </span>
+          <span class="chat-inbox-list__preview{% if row.system %} is-system{% endif %}">{{ row.preview }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="game-status">No chats in this view. Start a <a href="{% url 'chat:start_direct' %}">direct conversation</a>.</p>
+    {% endif %}
+  </section>
+
+  <section class="game-panel chat-app__thread"{% if chat %} id="chat-room" data-chat-id="{{ chat.pk }}" data-self-id="{{ request.user.pk }}" data-has-older="{% if has_older %}1{% else %}0{% endif %}" data-find="{{ find }}"{% endif %} aria-labelledby="chat-room-title">
+    {% if chat %}
+    <a class="game-back chat-app__back" href="{{ back_url }}">← Chats</a>
+    <div class="chat-thread-head">
+      {% if peer %}
+      <span class="chat-row__avatar" aria-hidden="true">
+        <span>{{ peer_initials }}</span>
+        {% if peer.has_avatar %}<img src="{{ peer.avatar_url }}" alt="">{% endif %}
+      </span>
+      {% endif %}
+      <h1 id="chat-room-title" class="game-title">
+        {% if peer_profile_url %}
+        <a href="{{ peer_profile_url }}">{{ title }}</a>
+        {% else %}
+        {{ title }}
+        {% endif %}
+      </h1>
+    </div>
+    <p id="chat-connection" class="chat-connection" role="status"{% if not find %} hidden{% endif %}>{% if find %}Showing matches.{% endif %}</p>
+
+    <form class="chat-find" method="get" action="">
+      <input type="hidden" name="tab" value="{{ list_params.tab }}">
+      {% if list_params.q %}<input type="hidden" name="q" value="{{ list_params.q }}">{% endif %}
+      {% if list_params.unread %}<input type="hidden" name="unread" value="1">{% endif %}
+      {% if list_params.sort != "activity" %}<input type="hidden" name="sort" value="{{ list_params.sort }}">{% endif %}
+      <label class="visually-hidden" for="chat-find-input">Search messages</label>
+      <input id="chat-find-input" name="find" type="search" value="{{ find }}" maxlength="80" placeholder="Search messages" autocomplete="off">
+      <button type="submit" class="game-btn game-btn--secondary">Search</button>
+      {% if find %}<a href="{{ clear_find_url }}">Clear</a>{% endif %}
+    </form>
+
+    <p id="chat-empty-hint" class="game-status"{% if messages_list %} hidden{% endif %}>{% if find %}No messages match this search.{% else %}No messages yet. Say hello!{% endif %}</p>
+    <div id="chat-log" class="game-chat-log game-chat-log--room game-chat-log--thread" role="log" aria-relevant="additions" aria-label="Conversation" tabindex="0">
+      {% for m in messages_list %}
+      <div class="game-chat-line{% if m.kind == 'system' %} game-chat-line--system{% elif m.is_mine %} is-mine{% endif %}"
+           data-message-id="{{ m.id }}"
+           data-sender-id="{{ m.sender_id }}"
+           data-sent-at="{{ m.sent_at_iso }}"
+           data-kind="{{ m.kind }}">
+        <p class="game-chat-line__meta">
+          {% if m.profile_url %}
+          <a class="game-chat-line__name" href="{{ m.profile_url }}">{{ m.author }}</a>
+          {% else %}
+          <span class="game-chat-line__name">{{ m.author }}</span>
+          {% endif %}
+          <time datetime="{{ m.sent_at_iso }}">{{ m.time_label }}</time>
+        </p>
+        <p class="game-chat-line__body">{{ m.content }}</p>
+      </div>
+      {% endfor %}
+    </div>
+
+    <button type="button" id="chat-jump" class="game-btn game-btn--secondary chat-jump" hidden>New messages</button>
+
+    <form method="post" action="" id="chat-form" class="game-chat-form">
+      {% csrf_token %}
+      <fieldset {% if find %}disabled{% endif %}>
+        <label class="visually-hidden" for="chat-input">Message</label>
+        <input id="chat-input" name="content" type="text" maxlength="10000" placeholder="Message…" autocomplete="off" required value="{{ form.content.value|default_if_none:'' }}" {% if form.content.errors %}aria-invalid="true" aria-describedby="chat-error"{% endif %} />
+        <button type="submit" id="chat-send" class="game-btn game-btn--primary">Send</button>
+      </fieldset>
+    </form>
+    <p id="chat-error" class="field-error" role="alert"{% if not form.content.errors %} hidden{% endif %}>{% if form.content.errors %}{{ form.content.errors.0 }}{% endif %}</p>
+    {% if find %}<p class="chat-find__note">Clear the search to send a message.</p>{% endif %}
+    {% else %}
+    <h1 id="chat-room-title" class="game-title">Conversation</h1>
+    <p class="game-status">Select a chat to read it here.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if chat %}
+<script src="{% static 'fools/js/chat_thread.js' %}?v={{ asset_chat_thread_js_v }}"></script>
+<script src="{% static 'chat/js/room.js' %}?v={{ asset_chat_room_js_v }}"></script>
+{% endif %}
+{% endblock %}
