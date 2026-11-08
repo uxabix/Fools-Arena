@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Chats · Fools Arena{% endblock %}
+
+{% block content %}
+<h2>Your chats</h2>
+<p><a href="{% url 'chat:start_direct' %}">Start a direct message</a></p>
+
+{% if chat_rows %}
+<ul class="chat-inbox-list">
+    {% for row in chat_rows %}
+    <li>
+        <a href="{% url 'chat:room' chat_id=row.chat.pk %}">{{ row.title }}</a>
+        <small>({{ row.chat.pk }})</small>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>No chats yet. Open a <a href="{% url 'chat:start_direct' %}">direct conversation</a>.</p>
+{% endif %}
+{% endblock %}

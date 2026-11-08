@@ -39,12 +39,35 @@ docker compose exec web python manage.py collectstatic
 ```
 
 ### 6. Work with Django
-All commands should be executed inside the web container. Examples:
+Run migrations, tests, and management commands **inside the `web` container** (after `docker compose up`):
+
 ```bash
-docker compose exec web python manage.py shell
+docker compose exec web python manage.py migrate
 docker compose exec web python manage.py makemigrations
-docker compose exec web pytest -v 
+docker compose exec web pytest -v
 ```
+
+If containers are not running yet, you can use a one-off container (starts dependencies per Compose file):
+
+```bash
+docker compose run --rm web python manage.py migrate
+docker compose run --rm web pytest -v
+```
+
+### Chat: API and templates
+REST (session or token auth as configured for DRF):
+
+- `GET /api/chat/chats/` — list chats for the current user  
+- `POST /api/chat/chats/direct/` — JSON body `{ "other_user_id": "<uuid>" }` to open or reuse a 1:1 chat  
+- `GET|POST /api/chat/chats/<chat_uuid>/messages/` — list recent messages or `{ "content": "..." }` to post  
+
+Same behaviour in server-rendered UI (login required):
+
+- `/chat/` — inbox  
+- `/chat/direct/new/` — start a direct chat by username  
+- `/chat/<chat_uuid>/` — history, HTTP post form, optional WebSocket client block on the page  
+
+Blocking uses `accounts.Block`: the blocked user cannot send **direct** messages to the blocker; lobby chats are unchanged.
 
 ### 7. Stop containers
 ```bash
@@ -52,8 +75,53 @@ docker compose down
 ```
 ---
 
+## Documentation
+
+Developer documentation is built with [Sphinx](https://www.sphinx-doc.org/) from the [`docs/`](docs/) directory (autodoc, Google-style docstrings via Napoleon, viewcode).
+
+**Install dependencies** (includes Sphinx):
+
+```bash
+pip install -r requirements.txt
+```
+
+**Generate HTML** (either command from the repository root):
+
+```bash
+cd docs && make html
+```
+
+```bash
+sphinx-build -b html docs docs/_build
+```
+
+Open `docs/_build/html/index.html` in a browser.
+
+**Rebuild after code or docstring changes** (clean output, then build again):
+
+```bash
+cd docs && make clean html
+```
+
+Or remove the build directory and run `sphinx-build` again:
+
+```bash
+rm -rf docs/_build && sphinx-build -b html docs docs/_build
+```
+
+**Using Docker** (from the project root, with the stack running and the app image built):
+
+```bash
+docker compose exec web sphinx-build -b html docs docs/_build
+```
+
+The `docs/_build/` directory is gitignored.
+
+---
+
 ## 🚀 Stack
-- Django, REST, Channels  
+- Django, REST, Channels
+- Redis
 - PostgreSQL  
 - Docker  
 - GitFlow  

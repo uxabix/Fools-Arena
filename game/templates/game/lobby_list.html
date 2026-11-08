@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% load static %}
+{% block body_class %}game-skin{% endblock %}
+{% block title %}Lobbies — Fools Arena{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
+{% endblock %}
+{% block content %}
+<div class="game-page lobby-list-page">
+  <section class="game-panel">
+    <h2 class="game-title">Open lobbies</h2>
+    <p id="lobby-status" class="game-status game-status--loading">Loading…</p>
+    <ul id="lobby-list" class="game-lobby-list" aria-label="Public lobbies"></ul>
+  </section>
+
+  <section class="game-panel">
+    <h3 class="game-subtitle">Create lobby</h3>
+    <form id="create-form" class="game-form">
+      <label class="game-form__full">
+        Name
+        <input name="name" required maxlength="100" placeholder="Room name" autocomplete="off" />
+      </label>
+      <label class="game-form__full game-form__check">
+        <span><input type="checkbox" name="is_private" /> Private room</span>
+      </label>
+      <label>
+        Password
+        <input name="password" type="password" autocomplete="new-password" placeholder="If private" />
+      </label>
+      <label>
+        Max players
+        <input name="max_players" type="number" min="2" max="8" value="4" />
+      </label>
+      <label>
+        Deck size
+        <select name="card_count">
+          <option value="24">24 cards</option>
+          <option value="36" selected>36 cards</option>
+          <option value="52">52 cards</option>
+        </select>
+      </label>
+      <label class="game-form__full game-form__check">
+        <span><input type="checkbox" name="neighbor_throw_only" /> Neighbor throw only</span>
+      </label>
+      <label class="game-form__full game-form__check">
+        <span><input type="checkbox" name="is_transferable" /> Transferable</span>
+      </label>
+      <div class="game-form__full">
+        <button type="submit" class="game-btn game-btn--primary">Create lobby</button>
+      </div>
+    </form>
+    <p id="create-error" class="text-error" aria-live="polite"></p>
+  </section>
+</div>
+<script>
+(function () {
+  const API = "/api/game/lobbies/";
+  function csrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  async function api(method, url, body) {
+    const opts = { method, credentials: "same-origin", headers: {} };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.headers["X-CSRFToken"] = csrf();
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    const t = await r.text();
+    let data;
+    try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
+    if (!r.ok) throw new Error((data && data.detail) || r.statusText || String(r.status));
+    return data;
+  }
+  function renderList(rows) {
+    const ul = document.getElementById("lobby-list");
+    ul.innerHTML = "";
+    rows.forEach(function (L) {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = "/game/lobbies/" + L.id + "/";
+      a.textContent = L.name + " (" + L.players.length + "/" + L.settings.max_players + ")";
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    const st = document.getElementById("lobby-status");
+    st.textContent = rows.length ? "" : "No public lobbies.";
+    st.classList.toggle("game-status--loading", false);
+  }
+  async function refresh() {
+    try {
+      const rows = await api("GET", API);
+      renderList(rows);
+    } catch (e) {
+      const st = document.getElementById("lobby-status");
+      st.textContent = "Could not load lobbies: " + e.message;
+      st.classList.remove("game-status--loading");
+    }
+  }
+  document.getElementById("create-form").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    document.getElementById("create-error").textContent = "";
+    const f = ev.target;
+    const body = {
+      name: f.name.value.trim(),
+      is_private: f.is_private.checked,
+      password: f.password.value || "",
+      max_players: Number(f.max_players.value),
+      card_count: Number(f.card_count.value),
+      neighbor_throw_only: f.neighbor_throw_only.checked,
+      is_transferable: f.is_transferable.checked,
+      allow_jokers: false
+    };
+    try {
+      const L = await api("POST", API, body);
+      location.href = "/game/lobbies/" + L.id + "/";
+    } catch (e) {
+      document.getElementById("create-error").textContent = e.message;
+    }
+  });
+  refresh();
+})();
+</script>
+{% endblock %}

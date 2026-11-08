@@ -8,28 +8,12 @@ the online multiplayer Durak card game.
 import uuid
 from django.db import models
 
-
 class CardSuit(models.Model):
     """Card suit model representing playing card suits (Hearts, Diamonds, etc.).
     
     Defines the four traditional card suits with their display names and colors.
     Used as a lookup table for card generation and game logic.
     
-    Attributes:
-        id (SmallAutoField): Primary key with small integer for efficiency.
-        name (CharField): Display name of the suit (e.g., "Hearts", "Spades").
-        color (CharField): Color of the suit, either "red" or "black".
-        
-    Color Choices:
-        - 'red': For Hearts and Diamonds
-        - 'black': For Clubs and Spades
-        
-    Example:
-        # Create a heart suit
-        hearts = CardSuit.objects.create(
-            name="Hearts", 
-            color="red"
-        )
     """
 
     id = models.SmallAutoField(primary_key=True)
@@ -57,24 +41,12 @@ class CardSuit(models.Model):
         verbose_name_plural = 'Card Suits'
         ordering = ['name']
 
-
 class CardRank(models.Model):
     """Card rank model representing playing card values (Ace, King, etc.).
     
     Defines the ranks/values of playing cards with their display names
     and numeric values for comparison during gameplay.
     
-    Attributes:
-        id (SmallAutoField): Primary key with small integer for efficiency.
-        name (CharField): Display name of the rank (e.g., "Ace", "King").
-        value (IntegerField): Numeric value used for card comparison and game logic.
-        
-    Example:
-        # Create an Ace card rank
-        ace = CardRank.objects.create(
-            name="Ace", 
-            value=14  # Highest value in most variations
-        )
     """
 
     id = models.SmallAutoField(primary_key=True)
@@ -102,7 +74,6 @@ class CardRank(models.Model):
         verbose_name_plural = 'Card Ranks'
         ordering = ['value']
 
-
 class Lobby(models.Model):
     """Game lobby model for organizing players before starting games.
     
@@ -110,34 +81,6 @@ class Lobby(models.Model):
     to start a Durak game session. Handles lobby ownership, privacy
     settings, and player management.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the lobby.
-        owner (ForeignKey): Reference to the User who created the lobby.
-        name (CharField): Display name of the lobby.
-        is_private (BooleanField): Whether the lobby requires a password to join.
-        password_hash (CharField, optional): Hashed password for private lobbies.
-        status (CharField): Current lobby state.
-        created_at (DateTimeField): When the lobby was created.
-        
-    Related Objects:
-        settings: LobbySettings object with game configuration (OneToOne).
-        players: LobbyPlayer objects representing users in this lobby.
-        games: Game objects that have been played in this lobby.
-        messages: Chat messages sent in this lobby.
-        
-    Status Choices:
-        - 'waiting': Lobby is open and waiting for players
-        - 'playing': Game is currently in progress
-        - 'closed': Lobby has been closed and is no longer accessible
-        
-    Example:
-        # Create a public lobby
-        lobby = Lobby.objects.create(
-            owner=user,
-            name="Beginner's Game",
-            is_private=False,
-            status='waiting'
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -190,7 +133,6 @@ class Lobby(models.Model):
         verbose_name_plural = 'Lobbies'
         ordering = ['-created_at']
 
-
 class LobbySettings(models.Model):
     """Configuration settings for a game lobby.
     
@@ -198,32 +140,6 @@ class LobbySettings(models.Model):
     started within the associated lobby. Each lobby has exactly one
     settings configuration.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the settings.
-        lobby (OneToOneField): Reference to the associated Lobby.
-        max_players (PositiveIntegerField): Maximum number of players allowed.
-        card_count (IntegerField): Number of cards to use in the deck.
-        is_transferable (BooleanField): Whether cards can be transferred between players.
-        neighbor_throw_only (BooleanField): Whether only neighbors can throw in additional cards.
-        allow_jokers (BooleanField): Whether joker cards are included in the deck.
-        turn_time_limit (IntegerField, optional): Time limit per turn in seconds.
-        special_rule_set (ForeignKey, optional): Reference to a special rule configuration.
-        
-    Card Count Choices:
-        - 24: Short deck (9, 10, J, Q, K, A of each suit)
-        - 36: Standard deck (6, 7, 8, 9, 10, J, Q, K, A of each suit)
-        - 52: Full deck (all cards including 2-5)
-        
-    Example:
-        # Create standard game settings
-        settings = LobbySettings.objects.create(
-            lobby=lobby,
-            max_players=4,
-            card_count=36,
-            is_transferable=True,
-            neighbor_throw_only=False,
-            allow_jokers=False
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -269,7 +185,6 @@ class LobbySettings(models.Model):
         verbose_name = 'Lobby Settings'
         verbose_name_plural = 'Lobby Settings'
 
-
 class LobbyPlayer(models.Model):
     """Relationship model connecting users to lobbies with their status.
     
@@ -277,29 +192,6 @@ class LobbyPlayer(models.Model):
     current status and readiness to play. Handles the player lifecycle
     from joining to leaving the lobby.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the lobby membership.
-        lobby (ForeignKey): Reference to the Lobby the player has joined.
-        user (ForeignKey): Reference to the User who joined the lobby.
-        status (CharField): Current status of the player in the lobby.
-        
-    Status Choices:
-        - 'waiting': Player has joined but is not ready to start
-        - 'ready': Player is ready to start a game
-        - 'playing': Player is currently in an active game
-        - 'left': Player has left the lobby
-        
-    Example:
-        # Add a player to a lobby
-        player = LobbyPlayer.objects.create(
-            lobby=lobby,
-            user=user,
-            status='waiting'
-        )
-        
-        # Mark player as ready
-        player.status = 'ready'
-        player.save()
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -347,7 +239,6 @@ class LobbyPlayer(models.Model):
         unique_together = ['lobby', 'user']
         ordering = ['lobby', 'user__username']
 
-
 class Game(models.Model):
     """Core game session model for Durak card game.
     
@@ -355,45 +246,13 @@ class Game(models.Model):
     Handles game state, trump card selection, and player management.
     Each game is linked to a specific lobby and tracks all game-related data.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the game session.
-        lobby (ForeignKey): Reference to the Lobby where this game is played.
-        trump_card (ForeignKey): The card that determines the trump suit for this game.
-        started_at (DateTimeField): When the game session began.
-        finished_at (DateTimeField, optional): When the game ended (null for active games).
-        status (CharField): Current game state ('in_progress' or 'finished').
-        loser (ForeignKey, optional): Reference to the User who lost the game.
-        
-    Related Objects:
-        players: GamePlayer objects representing players in this game session.
-        deck_cards: GameDeck objects representing cards remaining in the deck.
-        hands: PlayerHand objects showing which cards each player holds.
-        table_cards: TableCard objects representing cards currently on the table.
-        discarded_cards: DiscardPile objects for cards that have been discarded.
-        turns: Turn objects tracking the sequence of player turns.
-        
-    Status Choices:
-        - 'in_progress': Game is currently being played
-        - 'finished': Game has ended with a winner/loser determined
-        
-    Example:
-        # Start a new game
-        game = Game.objects.create(
-            lobby=lobby,
-            trump_card=selected_trump_card,
-            status='in_progress'
-        )
-        
-        # End the game with a loser
-        game.status = 'finished'
-        game.loser = losing_player
-        game.finished_at = timezone.now()
-        game.save()
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     lobby = models.ForeignKey(Lobby, on_delete=models.CASCADE)
     trump_card = models.ForeignKey('Card', on_delete=models.PROTECT, related_name='as_trump')
+    # attacker_id, defender_id, phase: build | defend | between
+    runtime_state = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=15, choices=[('in_progress', 'In Progress'), ('finished', 'Finished')])
@@ -446,28 +305,12 @@ class Game(models.Model):
         verbose_name_plural = 'Games'
         ordering = ['-started_at']
 
-
 class GamePlayer(models.Model):
     """Relationship model connecting users to game sessions with game-specific data.
     
     Represents a player's participation in a specific game, tracking their
     position, remaining cards, and other game-state information.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the game participation.
-        game (ForeignKey): Reference to the Game session.
-        user (ForeignKey): Reference to the participating User.
-        seat_position (IntegerField): Player's position around the table (turn order).
-        cards_remaining (IntegerField): Number of cards currently in player's hand.
-        
-    Example:
-        # Add a player to a game
-        game_player = GamePlayer.objects.create(
-            game=game,
-            user=user,
-            seat_position=1,
-            cards_remaining=6
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -514,7 +357,6 @@ class GamePlayer(models.Model):
         unique_together = ['game', 'user']
         ordering = ['seat_position']
 
-
 class Card(models.Model):
     """Playing card model combining suit, rank, and optional special properties.
     
@@ -522,30 +364,6 @@ class Card(models.Model):
     special abilities. Cards can be standard playing cards or special
     cards with unique effects.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the card.
-        suit (ForeignKey): Reference to the CardSuit (Hearts, Diamonds, etc.).
-        rank (ForeignKey): Reference to the CardRank (Ace, King, etc.).
-        special_card (ForeignKey, optional): Reference to special card effects if applicable.
-        
-    Related Objects:
-        attack_card: TableCard objects where this card is the attacking card.
-        defense_card: TableCard objects where this card is the defending card.
-        as_trump: Game objects where this card serves as the trump card.
-        
-    Example:
-        # Create a standard playing card
-        card = Card.objects.create(
-            suit=hearts_suit,
-            rank=ace_rank
-        )
-        
-        # Create a special card
-        special_card = Card.objects.create(
-            suit=spades_suit,
-            rank=joker_rank,
-            special_card=skip_effect
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -613,43 +431,12 @@ class Card(models.Model):
         verbose_name_plural = 'Cards'
         unique_together = ['suit', 'rank', 'special_card']
 
-
 class SpecialCard(models.Model):
     """Special card effects model for custom game mechanics.
 
     Defines special abilities that can be applied to cards to create
     unique gameplay mechanics beyond standard Durak rules. Each special
     card type has a specific effect and description.
-
-    Attributes:
-        id (UUIDField): Unique identifier for the special card type.
-        name (CharField): Display name of the special effect.
-        effect_type (CharField): Category of the special effect.
-        effect_value (JSONField): JSON data containing effect parameters.
-        description (TextField): Human-readable description of the effect.
-
-    Effect Types:
-        - 'skip': Skip the next player's turn
-        - 'reverse': Reverse turn order
-        - 'draw': Force target player to draw additional cards
-        - 'custom': Custom effect with parameters in effect_value
-
-    Example:
-        # Create a skip effect card
-        skip_effect = SpecialCard.objects.create(
-            name="Skip Turn",
-            effect_type="skip",
-            effect_value={},
-            description="Next player loses their turn"
-        )
-
-        # Create a draw effect card
-        draw_effect = SpecialCard.objects.create(
-            name="Draw Two",
-            effect_type="draw",
-            effect_value={"card_count": 2},
-            description="Target player draws 2 additional cards"
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -705,38 +492,12 @@ class SpecialCard(models.Model):
         verbose_name_plural = 'Special Cards'
         ordering = ['name']
 
-
 class SpecialRuleSet(models.Model):
     """Special rule configuration for advanced game variants.
 
     Defines collections of special rules and cards that can be applied
     to lobbies to create custom game experiences. Each rule set can
     specify minimum player requirements and special card inclusions.
-
-    Attributes:
-        id (UUIDField): Unique identifier for the rule set.
-        name (CharField): Display name of the rule set.
-        description (TextField): Detailed description of the rules.
-        min_players (IntegerField): Minimum players required for this rule set.
-
-    Related Objects:
-        special_cards: SpecialCard objects included in this rule set (M2M through SpecialRuleSetCard).
-        lobby_settings: LobbySettings objects using this rule set.
-
-    Example:
-        # Create a beginner-friendly rule set
-        beginner_rules = SpecialRuleSet.objects.create(
-            name="Beginner Special",
-            description="Simple special cards for new players",
-            min_players=2
-        )
-
-        # Create an advanced rule set
-        advanced_rules = SpecialRuleSet.objects.create(
-            name="Master's Challenge",
-            description="Complex special effects for experienced players",
-            min_players=4
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -799,34 +560,12 @@ class SpecialRuleSet(models.Model):
         verbose_name_plural = 'Special Rule Sets'
         ordering = ['name']
 
-
 class SpecialRuleSetCard(models.Model):
     """Association model linking special cards to rule sets with configuration.
 
     Defines which special cards are included in specific rule sets and
     how they should be configured within that context. Allows for
     fine-tuned control over special card availability and behavior.
-
-    Attributes:
-        id (UUIDField): Unique identifier for the association.
-        rule_set (ForeignKey): Reference to the SpecialRuleSet.
-        card (ForeignKey): Reference to the SpecialCard.
-        is_enabled (BooleanField): Whether this card is active in the rule set.
-
-    Example:
-        # Add a special card to a rule set
-        SpecialRuleSetCard.objects.create(
-            rule_set=beginner_rules,
-            card=skip_effect,
-            is_enabled=True
-        )
-
-        # Add but disable a complex card for beginners
-        SpecialRuleSetCard.objects.create(
-            rule_set=beginner_rules,
-            card=complex_effect,
-            is_enabled=False
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -875,26 +614,12 @@ class SpecialRuleSetCard(models.Model):
         unique_together = ['rule_set', 'card']
         ordering = ['rule_set__name', 'card__name']
 
-
 class GameDeck(models.Model):
     """Model representing cards remaining in the deck during a game.
     
     Tracks the position and order of cards in the game deck. Cards are
     drawn from this deck when players need to replenish their hands.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the deck entry.
-        game (ForeignKey): Reference to the Game session.
-        card (ForeignKey): Reference to the Card in the deck.
-        position (IntegerField): Position of the card in the deck (for draw order).
-        
-    Example:
-        # Add a card to the game deck
-        GameDeck.objects.create(
-            game=game,
-            card=card,
-            position=1
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -956,28 +681,12 @@ class GameDeck(models.Model):
         unique_together = ['game', 'position']
         ordering = ['position']
 
-
 class PlayerHand(models.Model):
     """Model representing cards in a player's hand during a game.
     
     Tracks which cards each player holds, with optional ordering
     information for UI display purposes.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the hand entry.
-        game (ForeignKey): Reference to the Game session.
-        player (ForeignKey): Reference to the User who holds the card.
-        card (ForeignKey): Reference to the Card in the player's hand.
-        order_in_hand (IntegerField, optional): Display order of card in hand.
-        
-    Example:
-        # Add a card to a player's hand
-        PlayerHand.objects.create(
-            game=game,
-            player=user,
-            card=card,
-            order_in_hand=1
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -1040,7 +749,6 @@ class PlayerHand(models.Model):
         unique_together = ['game', 'player', 'card']
         ordering = ['order_in_hand']
 
-
 class TableCard(models.Model):
     """Model representing attack and defense card pairs on the table.
     
@@ -1048,25 +756,6 @@ class TableCard(models.Model):
     and can be defended by appropriate defending cards. This model
     tracks these attack-defense pairs.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the table card pair.
-        game (ForeignKey): Reference to the Game session.
-        attack_card (ForeignKey): The card used for attack.
-        defense_card (ForeignKey, optional): The card used for defense (null if undefended).
-        
-    Related Objects:
-        moves: Move objects referencing this table card pair.
-        
-    Example:
-        # Place an attack card on the table
-        table_card = TableCard.objects.create(
-            game=game,
-            attack_card=seven_of_hearts
-        )
-        
-        # Defend the attack
-        table_card.defense_card = ten_of_hearts
-        table_card.save()
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -1129,26 +818,12 @@ class TableCard(models.Model):
         verbose_name_plural = 'Table Cards'
         ordering = ['id']
 
-
 class DiscardPile(models.Model):
     """Model representing cards that have been discarded from the game.
     
     After successful defense rounds or when cards are played out,
     they are moved to the discard pile and removed from active play.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the discard entry.
-        game (ForeignKey): Reference to the Game session.
-        card (ForeignKey): Reference to the discarded Card.
-        position (IntegerField, optional): Order in which cards were discarded.
-        
-    Example:
-        # Discard cards after a successful defense
-        DiscardPile.objects.create(
-            game=game,
-            card=attack_card,
-            position=1
-        )
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -1178,7 +853,15 @@ class DiscardPile(models.Model):
         """
         last_position = cls.objects.filter(game=game).count()
         discard_entries = []
-
+        for i, card in enumerate(cards):
+            discard_entries.append(
+                cls.objects.create(
+                    game=game,
+                    card=card,
+                    position=last_position + i + 1,
+                )
+            )
+        return discard_entries
 
 class Turn(models.Model):
     """Turn tracking model for managing player turn sequence in games.
@@ -1187,32 +870,13 @@ class Turn(models.Model):
     turn it is and maintaining the sequential order of gameplay. Each turn
     can contain multiple moves (attack, defend, pickup).
     
-    Attributes:
-        id (UUIDField): Unique identifier for the turn.
-        game (ForeignKey): Reference to the Game session this turn belongs to.
-        player (ForeignKey): Reference to the User whose turn it is.
-        turn_number (IntegerField): Sequential number of this turn in the game.
-        
-    Related Objects:
-        moves: Move objects that occurred during this turn.
-        
-    Example:
-        # Create a new turn
-        turn = Turn.objects.create(
-            game=game,
-            player=current_player,
-            turn_number=1
-        )
-        
-        # Get the next turn number
-        next_turn = Turn.objects.filter(game=game).count() + 1
     """
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     game = models.ForeignKey(Game, on_delete=models.CASCADE, related_name='turns')
     player = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
     turn_number = models.IntegerField()
-    
+
     def __str__(self):
         """Return string representation of the turn.
         
@@ -1220,7 +884,7 @@ class Turn(models.Model):
             str: Turn number and player information.
         """
         return f"Turn {self.turn_number}: {self.player.username} in {self.game}"
-    
+
     def get_moves(self):
         """Get all moves made during this turn.
         
@@ -1228,7 +892,7 @@ class Turn(models.Model):
             QuerySet: Move objects associated with this turn.
         """
         return self.moves.all().order_by('created_at')
-    
+
     def is_complete(self):
         """Check if this turn has been completed (has moves).
         
@@ -1236,7 +900,7 @@ class Turn(models.Model):
             bool: True if turn has associated moves, False otherwise.
         """
         return self.moves.exists()
-    
+
     @classmethod
     def get_current_turn(cls, game):
         """Get the most recent turn for a game.
@@ -1248,7 +912,7 @@ class Turn(models.Model):
             Turn: The turn with the highest turn_number, or None if no turns exist.
         """
         return cls.objects.filter(game=game).order_by('-turn_number').first()
-    
+
     @classmethod
     def create_next_turn(cls, game, player):
         """Create the next turn in sequence for a game.
@@ -1266,13 +930,12 @@ class Turn(models.Model):
             player=player,
             turn_number=next_number
         )
-    
+
     class Meta:
         verbose_name = 'Turn'
         verbose_name_plural = 'Turns'
         unique_together = ['game', 'turn_number']
         ordering = ['turn_number']
-
 
 class Move(models.Model):
     """Game move model representing individual player actions during gameplay.
@@ -1281,46 +944,20 @@ class Move(models.Model):
     attacking with cards, defending attacks, or picking up cards. Each move
     is associated with a turn and references the relevant table cards.
     
-    Attributes:
-        id (UUIDField): Unique identifier for the move.
-        turn (ForeignKey): Reference to the Turn this move belongs to.
-        table_card (ForeignKey): Reference to the TableCard affected by this move.
-        action_type (CharField): Type of action performed (attack, defend, pickup).
-        created_at (DateTimeField): Timestamp when the move was made.
-        
-    Action Types:
-        - 'attack': Player places an attacking card on the table
-        - 'defend': Player defends an attack with an appropriate card
-        - 'pickup': Player picks up undefended cards from the table
-        
-    Example:
-        # Record an attack move
-        attack_move = Move.objects.create(
-            turn=current_turn,
-            table_card=table_card,
-            action_type='attack'
-        )
-        
-        # Record a defense move
-        defense_move = Move.objects.create(
-            turn=current_turn,
-            table_card=table_card,
-            action_type='defend'
-        )
     """
-    
+
     ACTION_CHOICES = [
         ('attack', 'Attack'),
         ('defend', 'Defend'),
         ('pickup', 'Pickup'),
     ]
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     turn = models.ForeignKey(Turn, on_delete=models.CASCADE, related_name='moves')
     table_card = models.ForeignKey(TableCard, on_delete=models.CASCADE)
     action_type = models.CharField(max_length=10, choices=ACTION_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         """Return string representation of the move.
         
@@ -1328,7 +965,7 @@ class Move(models.Model):
             str: Action type and card information.
         """
         return f"{self.action_type.title()} by {self.turn.player.username}: {self.table_card}"
-    
+
     def get_player(self):
         """Get the player who made this move.
         
@@ -1336,7 +973,7 @@ class Move(models.Model):
             User: The user associated with the turn that contains this move.
         """
         return self.turn.player
-    
+
     def is_attack(self):
         """Check if this move is an attack action.
         
@@ -1344,7 +981,7 @@ class Move(models.Model):
             bool: True if action_type is 'attack', False otherwise.
         """
         return self.action_type == 'attack'
-    
+
     def is_defense(self):
         """Check if this move is a defense action.
         
@@ -1352,7 +989,7 @@ class Move(models.Model):
             bool: True if action_type is 'defend', False otherwise.
         """
         return self.action_type == 'defend'
-    
+
     def is_pickup(self):
         """Check if this move is a pickup action.
         
@@ -1360,7 +997,7 @@ class Move(models.Model):
             bool: True if action_type is 'pickup', False otherwise.
         """
         return self.action_type == 'pickup'
-    
+
     @classmethod
     def get_game_moves(cls, game):
         """Get all moves for a specific game ordered by time.
@@ -1372,7 +1009,7 @@ class Move(models.Model):
             QuerySet: Move objects for the game ordered by creation time.
         """
         return cls.objects.filter(turn__game=game).order_by('created_at')
-    
+
     @classmethod
     def get_player_moves(cls, game, player):
         """Get all moves made by a specific player in a game.
@@ -1385,7 +1022,7 @@ class Move(models.Model):
             QuerySet: Move objects made by the player in the game.
         """
         return cls.objects.filter(turn__game=game, turn__player=player).order_by('created_at')
-    
+
     class Meta:
         verbose_name = 'Move'
         verbose_name_plural = 'Moves'

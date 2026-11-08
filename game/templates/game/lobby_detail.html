@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% load static %}
+{% block body_class %}game-skin{% endblock %}
+{% block title %}Lobby — Fools Arena{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
+{% endblock %}
+{% block content %}
+<div class="game-page lobby-detail-page">
+  <a class="game-back" href="/game/">← All lobbies</a>
+
+  <section class="game-panel">
+    <div id="lobby-banner" class="game-banner game-banner--wait" role="status" aria-live="polite"></div>
+    <h2 id="lobby-title" class="game-title">Lobby</h2>
+    <pre id="lobby-meta" class="game-meta" aria-label="Lobby settings"></pre>
+    <ul id="players" class="game-players"></ul>
+    <div id="actions" class="game-actions"></div>
+    <div class="game-btn-row">
+      <button type="button" id="btn-ready" class="game-btn game-btn--secondary game-btn--hidden">Ready</button>
+      <button type="button" id="btn-start" class="game-btn game-btn--primary game-btn--hidden">Start game</button>
+      <button type="button" id="btn-join" class="game-btn game-btn--primary">Join this lobby</button>
+      <button type="button" id="btn-leave" class="game-btn game-btn--secondary game-btn--hidden">Leave lobby</button>
+    </div>
+    <p id="err" class="text-error" aria-live="polite"></p>
+  </section>
+
+  <section class="game-panel">
+    <h3 class="game-subtitle">Lobby chat</h3>
+    <div id="chat-log" class="game-chat-log" aria-live="polite" aria-relevant="additions"></div>
+    <form id="chat-form" class="game-chat-form">
+      <input name="content" type="text" maxlength="4000" placeholder="Message…" aria-label="Message" />
+      <button type="submit" class="game-btn game-btn--primary">Send</button>
+    </form>
+  </section>
+</div>
+<script>
+(function () {
+  const parts = location.pathname.split("/").filter(Boolean);
+  const lobbyId = parts[parts.length - 1];
+  const API = "/api/game/lobbies/" + lobbyId + "/";
+  let lastState = null;
+  let profile = null;
+  let profileReady = false;
+  let lobbyWs = null;
+  let lobbyWsGeneration = 0;
+  /** Avoid double navigation when host uses Start and render runs from the same tick. */
+  let navigatedToGame = false;
+
+  function uidStr() {
+    return profile && profile.id != null ? String(profile.id) : "";
+  }
+
+  /** Compare user ids from API (string/int, optional UUID hyphen/case differences). */
+  function uuidEq(a, b) {
+    if (a == null || b == null) return false;
+    var na = String(a).toLowerCase().replace(/-/g, "");
+    var nb = String(b).toLowerCase().replace(/-/g, "");
+    return na === nb;
+  }
+
+  function disconnectLobbyWs() {
+    if (lobbyWs) {
+      try { lobbyWs.close(); } catch (_) {}
+      lobbyWs = null;
+      lobbyWsGeneration += 1;
+    }
+  }
+
+  function ensureLobbyWs() {
+    if (!profileReady || !lastState) return;
+    var uid = uidStr();
+    if (!uid) return;
+    var me = lastState.players.find(function (p) { return uuidEq(p.user_id, uid); });
+    if (!me) {
+      disconnectLobbyWs();
+      return;
+    }
+    if (lobbyWs && (lobbyWs.readyState === WebSocket.OPEN || lobbyWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    disconnectLobbyWs();
+    var gen = lobbyWsGeneration;
+    var proto = location.protocol === "https:" ? "wss:" : "ws:";
+    var socket = new WebSocket(proto + "//" + location.host + "/ws/lobbies/" + lobbyId + "/");
+    lobbyWs = socket;
+    socket.onmessage = function () {
+      if (gen !== lobbyWsGeneration) return;
+      refresh();
+      loadChat().catch(function (err) {
+        document.getElementById("err").textContent = err.message || String(err);
+      });
+    };
+  }
+
+  /** When the host starts the table, only they get `location` from the Start handler; everyone else
+   *  relies on WS + refresh. Send seated players (status `playing`) straight to the table. */
+  function maybeRedirectToActiveGame(L) {
+    if (navigatedToGame) return;
+    var ag = L.active_game_id;
+    if (!ag || !profileReady) return;
+    var uid = uidStr();
+    if (!uid) return;
+    var me = L.players.find(function (p) { return uuidEq(p.user_id, uid); });
+    if (!me || me.status !== "playing") return;
+    if (uuidEq(L.owner_id, uid)) return;
+    navigatedToGame = true;
+    location.href = "/game/play/" + ag + "/";
+  }
+
+  function csrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+  async function api(method, url, body) {
+    const opts = { method, credentials: "same-origin", headers: {} };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.headers["X-CSRFToken"] = csrf();
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    const t = await r.text();
+    let data;
+    try { data = t ? JSON.parse(t) : null; } catch (_) { data = t; }
+    if (!r.ok) throw new Error((data && data.detail) || r.statusText || String(r.status));
+    return data;
+  }
+
+  function render(L) {
+    lastState = L;
+    const uid = uidStr();
+    document.getElementById("lobby-title").textContent = L.name;
+    document.getElementById("lobby-meta").textContent = JSON.stringify(L.settings, null, 2);
+    const ul = document.getElementById("players");
+    ul.innerHTML = "";
+    L.players.forEach(function (p) {
+      const li = document.createElement("li");
+      li.textContent = p.username + " — " + p.status;
+      ul.appendChild(li);
+    });
+
+    const me = uid ? L.players.find(function (p) { return uuidEq(p.user_id, uid); }) : null;
+    const isMember = !!me;
+    const currentUserReady = me ? me.status === "ready" : false;
+    const isOwner = !!(uid && uuidEq(L.owner_id, uid));
+    const waiting = L.status === "waiting";
+
+    document.getElementById("btn-join").classList.toggle("game-btn--hidden", isMember || L.status === "closed");
+    document.getElementById("btn-leave").classList.toggle("game-btn--hidden", !isMember || L.status === "closed");
+
+    const br = document.getElementById("btn-ready");
+    br.classList.toggle("game-btn--hidden", !isMember || !waiting || L.status === "closed");
+    br.textContent = currentUserReady ? "Not ready" : "Ready";
+
+    const btnStart = document.getElementById("btn-start");
+    btnStart.classList.toggle("game-btn--hidden", !isOwner || !waiting || L.status === "closed");
+    btnStart.disabled = !L.can_start;
+    btnStart.title = L.can_start ? "" : "At least two players must click Ready.";
+
+    const ban = document.getElementById("lobby-banner");
+    if (L.status === "closed") {
+      ban.textContent = "This lobby is closed. You can open another from the list.";
+      ban.className = "game-banner game-banner--muted";
+    } else if (waiting) {
+      if (L.can_start && isOwner) {
+        ban.textContent = "All set — press «Start game» when you are ready to deal.";
+        ban.className = "game-banner game-banner--ok";
+      } else if (L.can_start && !isOwner) {
+        ban.textContent = "Everyone is ready. Waiting for the host to start.";
+        ban.className = "game-banner game-banner--ok";
+      } else {
+        ban.textContent = "Ready players: " + (L.ready_count || 0) + " of " + (L.active_player_count || 0) +
+          ". Need at least 2 ready to start.";
+        ban.className = "game-banner game-banner--wait";
+      }
+    } else {
+      ban.textContent = "";
+      ban.className = "game-banner";
+    }
+
+    const ag = L.active_game_id;
+    const act = document.getElementById("actions");
+    act.innerHTML = "";
+    if (ag) {
+      const a = document.createElement("a");
+      a.href = "/game/play/" + ag + "/";
+      a.textContent = "Enter active game";
+      act.appendChild(a);
+    }
+
+    maybeRedirectToActiveGame(L);
+    ensureLobbyWs();
+  }
+
+  async function refresh() {
+    try {
+      const L = await api("GET", API);
+      render(L);
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  }
+  async function loadChat() {
+    const rows = await api("GET", API + "messages/");
+    const log = document.getElementById("chat-log");
+    log.innerHTML = "";
+    rows.forEach(function (m) {
+      const d = document.createElement("div");
+      d.className = "game-chat-line";
+      d.textContent = m.username + ": " + m.content;
+      log.appendChild(d);
+    });
+    log.scrollTop = log.scrollHeight;
+  }
+  document.getElementById("btn-join").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    try {
+      await api("POST", API + "join/", {});
+      await refresh();
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("btn-leave").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    try {
+      disconnectLobbyWs();
+      await api("POST", API + "leave/", {});
+      location.href = "/game/";
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("btn-ready").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    if (!lastState) return;
+    const uid = uidStr();
+    const me = lastState.players.find(function (p) { return uuidEq(p.user_id, uid); });
+    var nextReady = !(me && me.status === "ready");
+    try {
+      const L = await api("POST", API + "ready/", { ready: nextReady });
+      render(L);
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("btn-start").addEventListener("click", async function () {
+    document.getElementById("err").textContent = "";
+    try {
+      const G = await api("POST", API + "start/", {});
+      navigatedToGame = true;
+      location.href = "/game/play/" + G.id + "/";
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  document.getElementById("chat-form").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    const inp = ev.target.content;
+    const content = inp.value.trim();
+    if (!content) return;
+    try {
+      await api("POST", API + "messages/", { content: content });
+      inp.value = "";
+      await loadChat();
+    } catch (e) {
+      document.getElementById("err").textContent = e.message;
+    }
+  });
+  api("GET", "/api/accounts/auth/profile/")
+    .then(function (p) {
+      profile = p;
+      profileReady = true;
+    })
+    .then(function () { return refresh(); })
+    .then(loadChat)
+    .catch(function (e) {
+      document.getElementById("err").textContent = e.message;
+    });
+})();
+</script>
+{% endblock %}

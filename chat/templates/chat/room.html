@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} · Fools Arena{% endblock %}
+
+{% block content %}
+<h2>{{ title }}</h2>
+<p><a href="{% url 'chat:inbox' %}">← Inbox</a></p>
+
+<div id="chat-log" class="chat-log" aria-live="polite">
+    {% for m in messages_list %}
+    <div class="chat-msg"><strong>{{ m.sender.username }}</strong>:
+        <span>{{ m.content }}</span>
+        <small>{{ m.sent_at|date:"Y-m-d H:i" }}</small>
+    </div>
+    {% empty %}
+    <p id="chat-empty-hint">No messages yet.</p>
+    {% endfor %}
+</div>
+
+<form method="post" action="" id="chat-http-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Send</button>
+</form>
+
+<h3>Live (WebSocket)</h3>
+<p>Optional: connect for live updates (same channel as the API-backed clients).</p>
+<form id="chat-ws-form">
+    <input id="chat-message-input" type="text" size="80" placeholder="WebSocket message…" autocomplete="off">
+    <button type="submit">Send via WS</button>
+</form>
+
+<script>
+(function () {
+  const chatId = "{{ chat.pk }}";
+  const scheme = "{{ ws_scheme }}";
+  const host = "{{ ws_host }}";
+  const chatSocket = new WebSocket(scheme + '://' + host + '/ws/chat/' + chatId + '/');
+
+  const log = document.querySelector('#chat-log');
+  const emptyHint = document.querySelector('#chat-empty-hint');
+
+  function appendLine(sender, content, sentAt) {
+    if (emptyHint) emptyHint.remove();
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    div.innerHTML = '<strong>' + sender + '</strong>: <span></span> <small></small>';
+    div.querySelector('span').textContent = content;
+    div.querySelector('small').textContent = sentAt || '';
+    log.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+
+  chatSocket.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+    if (data.type === 'last_messages' && Array.isArray(data.messages)) {
+      data.messages.forEach(function (m) {
+        appendLine(m.sender, m.content, m.sent_at);
+      });
+      return;
+    }
+    if (data.type === 'error') {
+      appendLine('system', data.detail || 'Error', '');
+      return;
+    }
+    if (data.sender && data.content !== undefined) {
+      appendLine(data.sender, data.content, data.sent_at || '');
+    }
+  };
+
+  document.querySelector('#chat-ws-form').onsubmit = function(ev) {
+    ev.preventDefault();
+    const input = document.querySelector('#chat-message-input');
+    const v = (input.value || '').trim();
+    if (v && chatSocket.readyState === WebSocket.OPEN) {
+      chatSocket.send(JSON.stringify({ message: v }));
+      input.value = '';
+    }
+  };
+})();
+</script>
+{% endblock %}

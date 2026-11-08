@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load static %}
+{% block body_class %}game-skin{% endblock %}
+{% block title %}Table — Durak — Fools Arena{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'game/css/game.css' %}">
+{% endblock %}
+{% block content %}
+<div class="game-page play-page play-page--classic">
+  <header class="play-classic-bar">
+    <a id="back-lobby" class="game-back" href="#">← Back to lobby</a>
+    <div id="play-statusbar" class="play-statusbar" aria-live="polite"></div>
+  </header>
+
+  <div class="play-classic-layout">
+    <div id="opponents" class="play-opponents" aria-label="Opponents"></div>
+
+    <div class="play-felt">
+      <div class="play-felt__inner">
+        <div id="deck-trump-corner" class="play-deck-trump" aria-label="Deck and trump"></div>
+
+        <div id="table-mat" class="play-felt-center" aria-label="Table — trick area">
+          <div id="table-rows" class="play-table-grid"></div>
+        </div>
+
+        <aside class="play-side-actions" aria-label="Actions">
+          <button type="button" id="btn-take" class="game-btn game-btn--secondary play-action-btn" hidden>
+            Take cards
+          </button>
+          <button type="button" id="btn-bito" class="game-btn game-btn--primary play-action-btn" hidden>
+            Discard pile
+          </button>
+        </aside>
+      </div>
+    </div>
+
+    <footer class="play-my-area">
+      <div id="play-my-role" class="play-my-role"></div>
+      <p id="play-hint" class="play-hint"></p>
+      <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
+      <p class="play-hand-help">Click a card to toggle selecting cards of the same rank. Drag to the felt to attack or add cards; drag onto an uncovered attack card to defend.</p>
+    </footer>
+  </div>
+
+  <p id="err" class="text-error" aria-live="polite"></p>
+</div>
+<script src="{% static 'game/js/play_table.js' %}"></script>
+{% endblock %}

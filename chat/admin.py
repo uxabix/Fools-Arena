@@ -58,16 +58,14 @@ class MessageAdmin(admin.ModelAdmin):
     list_filter = (
         'sent_at',
         ('sender', admin.RelatedOnlyFieldListFilter),
-        ('receiver', admin.RelatedOnlyFieldListFilter),
-        ('lobby', admin.RelatedOnlyFieldListFilter),
+        ('chat', admin.RelatedOnlyFieldListFilter),
     )
     
     search_fields = (
         'content',
         'sender__username',
         'sender__email',
-        'receiver__username',
-        'lobby__name',
+        'chat__name',
     )
     
     readonly_fields = (
@@ -90,9 +88,9 @@ class MessageAdmin(admin.ModelAdmin):
             'fields': ('id', 'content', 'content_preview_formatted'),
             'description': 'Core message content and identification.'
         }),
-        ('Participants', {
-            'fields': ('sender', 'receiver', 'lobby'),
-            'description': 'Users and contexts involved in this message.'
+        ('Chat', {
+            'fields': ('sender', 'chat'),
+            'description': 'Message context (private, lobby, global, or group chat).'
         }),
         ('Message Analysis', {
             'fields': ('message_type_display', 'chat_context_display', 'character_count', 'word_count'),
@@ -141,6 +139,10 @@ class MessageAdmin(admin.ModelAdmin):
             return format_html(
                 '<span style="color: #009900; font-weight: bold;">💬 Lobby</span>'
             )
+        elif obj.chat.is_global:
+            return format_html(
+                '<span style="color: #663399; font-weight: bold;">🌐 Global</span>'
+            )
         return format_html(
             '<span style="color: #cc6600; font-weight: bold;">❓ Unknown</span>'
         )
@@ -157,22 +159,30 @@ class MessageAdmin(admin.ModelAdmin):
             str: HTML formatted context information with admin links.
         """
         context = obj.get_chat_context()
-        
-        if context['type'] == 'lobby' and obj.lobby:
-            lobby_url = reverse('admin:game_lobby_change', args=[obj.lobby.pk])
+
+        if context['type'] == 'lobby' and obj.chat.lobby_id:
+            lobby = obj.chat.lobby
+            lobby_url = reverse('admin:game_lobby_change', args=[lobby.pk])
             return format_html(
                 '<a href="{}" style="color: #009900;">📋 {}</a>',
                 lobby_url,
-                obj.lobby.name
+                lobby.name
             )
-        elif context['type'] == 'private' and obj.receiver:
-            receiver_url = reverse('admin:accounts_user_change', args=[obj.receiver.pk])
+        if context['type'] == 'private':
+            other = obj.chat.get_other_participant(obj.sender)
+            if other:
+                user_url = reverse('admin:accounts_user_change', args=[other.pk])
+                return format_html(
+                    '<a href="{}" style="color: #0066cc;">👤 Private with {}</a>',
+                    user_url,
+                    other.username
+                )
+        if context['type'] == 'global':
             return format_html(
-                '<a href="{}" style="color: #0066cc;">👤 Private with {}</a>',
-                receiver_url,
-                obj.receiver.username
+                '<span style="color: #663399;">🌐 {}</span>',
+                context['name']
             )
-        
+
         return format_html('<span style="color: #cc6600;">❓ Unknown Context</span>')
     
     chat_context_display.short_description = "Chat Context"
@@ -288,11 +298,8 @@ class MessageAdmin(admin.ModelAdmin):
         """
         return super().get_queryset(request).select_related(
             'sender',
-            'receiver',
-            'lobby'
-        ).prefetch_related(
-            'sender__sent_messages',
-            'receiver__received_messages'
+            'chat',
+            'chat__lobby',
         )
     
     def get_readonly_fields(self, request, obj=None):
@@ -309,7 +316,7 @@ class MessageAdmin(admin.ModelAdmin):
         
         # Non-superusers cannot edit core message data
         if not request.user.is_superuser:
-            readonly.extend(['sender', 'receiver', 'lobby', 'content'])
+            readonly.extend(['sender', 'chat', 'content'])
         
         return readonly
     
@@ -395,16 +402,5 @@ class MessageAdmin(admin.ModelAdmin):
         if not change:
             # Log message creation for audit purposes
             pass
-        
-        # Validate message before saving
-        try:
-            obj.clean()
-        except Exception as e:
-            self.message_user(
-                request,
-                f"Validation error: {e}",
-                level='ERROR'
-            )
-            return
         
         super().save_model(request, obj, form, change)
