@@ -42,7 +42,8 @@ _FOLDER_LABELS = {
 def chat_inbox(request):
     """Render the chat inbox for the signed-in user.
 
-    The list uses the same folder, search, and sort rules as the JSON list.
+    The list uses the same folder and sort rules as the JSON list. Name search
+    stays in the query string and is applied in the browser.
 
     Args:
         request (HttpRequest): Current request; ``request.user`` must be
@@ -69,8 +70,12 @@ def _chat_page_context(request, chat=None, form=None, messages_list=None, has_ol
         dict: Template context.
     """
     params = chat_list_params(request)
+    # Search runs in the browser so typing does not reload the page. The
+    # rendered rows still follow the tab, unread flag, and sort.
+    listed = dict(params)
+    listed["q"] = ""
     rows = []
-    for item in visible_chats(request.user, params):
+    for item in visible_chats(request.user, listed):
         row = _inbox_row(item, request.user)
         row["href"] = _chat_href(item.pk, params)
         row["current"] = bool(chat and item.pk == chat.pk)

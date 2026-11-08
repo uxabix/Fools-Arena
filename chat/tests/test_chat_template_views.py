@@ -154,15 +154,17 @@ class TestChatTemplateViews:
         assert str(lobby_chat.pk) in game_html
         assert str(direct.pk) not in game_html
 
-    def test_inbox_search_matches_the_other_player(self, client, test_user, second_user, user_factory):
-        """Search keeps a chat whose other player matches, and drops the rest."""
+    def test_inbox_search_keeps_the_query_for_the_browser(self, client, test_user, second_user, user_factory):
+        """Name search is stored in the field; every chat in the folder stays in the HTML."""
         matched, _ = Chat.objects.get_or_create_direct(test_user, second_user)
         other = user_factory(username="otherseek")
         skipped, _ = Chat.objects.get_or_create_direct(test_user, other)
         client.force_login(test_user)
         html = client.get(reverse("chat:inbox") + "?q=player2").content.decode()
         assert str(matched.pk) in html
-        assert str(skipped.pk) not in html
+        assert str(skipped.pk) in html
+        assert 'value="player2"' in html
+        assert 'data-search="otherseek"' in html
 
     def test_room_search_shows_matching_text_only(self, client, test_user, second_user):
         """In-thread search does not render lines that do not contain the text."""

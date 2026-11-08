@@ -3,6 +3,8 @@
 
 {% block title %}{% if chat %}{{ title }} — {% endif %}Chat — Fools Arena{% endblock %}
 
+{% block body_modifiers %} chat-screen{% endblock %}
+
 {% block content %}
 <div class="game-page chat-app{% if chat %} chat-app--open{% endif %}{% if chat and chat.is_direct_message %} chat-app--direct{% endif %}">
   <section class="game-panel chat-app__list" aria-labelledby="chat-list-title">
@@ -30,17 +32,19 @@
           <option value="name"{% if list_params.sort == "name" %} selected{% endif %}>Name</option>
         </select>
       </label>
-      <button type="submit" class="game-btn game-btn--secondary">Apply</button>
     </form>
 
     <p class="game-toolbar">
-      <a href="{% url 'chat:start_direct' %}" class="game-btn game-btn--primary">New direct message</a>
+      <a href="{% url 'chat:start_direct' %}" class="game-btn game-btn--primary">
+        <svg class="chat-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5h14v9H8.5L5 18.2z"/><path d="M12 8.5v5M9.5 11h5"/></svg>
+        New direct message
+      </a>
     </p>
 
     {% if chat_rows %}
     <ul class="game-lobby-list chat-inbox-list" aria-label="Chat list" data-sort="{{ list_params.sort }}">
       {% for row in chat_rows %}
-      <li>
+      <li data-search="{{ row.title }}">
         <a href="{{ row.href }}"{% if row.current %} aria-current="page"{% endif %}>
           <span class="chat-row__avatar" aria-hidden="true">
             <span>{{ row.initials }}</span>
@@ -66,6 +70,7 @@
       </li>
       {% endfor %}
     </ul>
+    <p id="chat-list-none" class="game-status" hidden>No chats in this view. Start a <a href="{% url 'chat:start_direct' %}">direct conversation</a>.</p>
     {% else %}
     <p class="game-status">No chats in this view. Start a <a href="{% url 'chat:start_direct' %}">direct conversation</a>.</p>
     {% endif %}
@@ -98,8 +103,16 @@
       {% if list_params.sort != "activity" %}<input type="hidden" name="sort" value="{{ list_params.sort }}">{% endif %}
       <label class="visually-hidden" for="chat-find-input">Search messages</label>
       <input id="chat-find-input" name="find" type="search" value="{{ find }}" maxlength="80" placeholder="Search messages" autocomplete="off">
-      <button type="submit" class="game-btn game-btn--secondary">Search</button>
-      {% if find %}<a href="{{ clear_find_url }}">Clear</a>{% endif %}
+      <button type="submit" class="game-btn game-btn--secondary">
+        <svg class="chat-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20"/></svg>
+        Search
+      </button>
+      {% if find %}
+      <a href="{{ clear_find_url }}">
+        <svg class="chat-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>
+        Clear
+      </a>
+      {% endif %}
     </form>
 
     <p id="chat-empty-hint" class="game-status"{% if messages_list %} hidden{% endif %}>{% if find %}No messages match this search.{% else %}No messages yet. Say hello!{% endif %}</p>
@@ -123,14 +136,20 @@
       {% endfor %}
     </div>
 
-    <button type="button" id="chat-jump" class="game-btn game-btn--secondary chat-jump" hidden>New messages</button>
+    <button type="button" id="chat-jump" class="game-btn game-btn--secondary chat-jump" hidden>
+      <svg class="chat-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9.5 12 15.5 18 9.5"/></svg>
+      New messages
+    </button>
 
     <form method="post" action="" id="chat-form" class="game-chat-form">
       {% csrf_token %}
       <fieldset {% if find %}disabled{% endif %}>
         <label class="visually-hidden" for="chat-input">Message</label>
         <input id="chat-input" name="content" type="text" maxlength="10000" placeholder="Message…" autocomplete="off" required value="{{ form.content.value|default_if_none:'' }}" {% if form.content.errors %}aria-invalid="true" aria-describedby="chat-error"{% endif %} />
-        <button type="submit" id="chat-send" class="game-btn game-btn--primary">Send</button>
+        <button type="submit" id="chat-send" class="game-btn game-btn--primary">
+          <svg class="chat-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-6.5 16-2.2-6.3z"/></svg>
+          Send
+        </button>
       </fieldset>
     </form>
     <p id="chat-error" class="field-error" role="alert"{% if not form.content.errors %} hidden{% endif %}>{% if form.content.errors %}{{ form.content.errors.0 }}{% endif %}</p>
@@ -144,6 +163,62 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+(function () {
+  var form = document.querySelector(".chat-tools");
+  if (!form) return;
+  var search = form.querySelector("#chat-search");
+  var list = document.querySelector(".chat-inbox-list");
+  var none = document.getElementById("chat-list-none");
+
+  function queryText() {
+    return (search && search.value || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+
+  function setQueryOn(link) {
+    if (!link) return;
+    var url = new URL(link.href, window.location.href);
+    var query = queryText();
+    if (query) url.searchParams.set("q", query);
+    else url.searchParams.delete("q");
+    link.href = url.pathname + url.search + url.hash;
+  }
+
+  function applySearch() {
+    var query = queryText().toLowerCase();
+    var shown = 0;
+    if (list) {
+      list.querySelectorAll("li").forEach(function (item) {
+        var hay = (item.getAttribute("data-search") || "").toLowerCase();
+        var match = !query || hay.indexOf(query) !== -1;
+        item.hidden = !match;
+        if (match) shown += 1;
+        setQueryOn(item.querySelector("a"));
+      });
+    }
+    if (none) none.hidden = !list || shown > 0;
+    document.querySelectorAll(".chat-tabs a, .chat-app__back").forEach(setQueryOn);
+    var url = new URL(window.location.href);
+    if (queryText()) url.searchParams.set("q", queryText());
+    else url.searchParams.delete("q");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
+
+  form.addEventListener("submit", function (event) {
+    if (document.activeElement === search) event.preventDefault();
+  });
+  form.addEventListener("change", function (event) {
+    if (event.target === search) return;
+    if (typeof form.requestSubmit === "function") form.requestSubmit();
+    else form.submit();
+  });
+  if (search) {
+    search.addEventListener("input", applySearch);
+    search.addEventListener("search", applySearch);
+    applySearch();
+  }
+})();
+</script>
 {% if chat %}
 <script src="{% static 'fools/js/chat_thread.js' %}?v={{ asset_chat_thread_js_v }}"></script>
 <script src="{% static 'chat/js/room.js' %}?v={{ asset_chat_room_js_v }}"></script>

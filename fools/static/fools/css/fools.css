@@ -4643,6 +4643,125 @@ body.game-skin {
   max-height: 70vh;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(126, 182, 214, 0.55) transparent;
+}
+
+.chat-app .chat-inbox-list::-webkit-scrollbar,
+.chat-app .game-chat-log--room::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-app .chat-inbox-list::-webkit-scrollbar-track,
+.chat-app .game-chat-log--room::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0.35rem 0;
+}
+
+.chat-app .chat-inbox-list::-webkit-scrollbar-thumb,
+.chat-app .game-chat-log--room::-webkit-scrollbar-thumb {
+  background-color: rgba(126, 182, 214, 0.45);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.chat-app .chat-inbox-list::-webkit-scrollbar-thumb:hover,
+.chat-app .game-chat-log--room::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(126, 182, 214, 0.75);
+}
+
+.chat-app .game-chat-log--room {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(126, 182, 214, 0.55) transparent;
+}
+
+html:has(body.chat-screen) {
+  height: 100%;
+  overflow: hidden;
+}
+
+body.chat-screen {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+body.chat-screen .site-shell {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  max-height: 100dvh;
+  padding-bottom: 0.65rem;
+  overflow: hidden;
+}
+
+body.chat-screen .site-header {
+  flex: none;
+  margin-bottom: 0.75rem;
+}
+
+body.chat-screen .site-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+body.chat-screen .site-footer {
+  flex: none;
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+}
+
+body.chat-screen .game-page.chat-app {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+body.chat-screen .chat-app__list,
+body.chat-screen .chat-app__thread {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+body.chat-screen .chat-app__list,
+body.chat-screen .chat-app__thread {
+  flex: 1 1 auto;
+}
+
+body.chat-screen .chat-app .chat-inbox-list {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+}
+
+body.chat-screen .chat-app__thread .game-chat-log--room {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+body.chat-screen .chat-app .game-chat-form,
+body.chat-screen .chat-app .chat-find,
+body.chat-screen .chat-app .chat-tools,
+body.chat-screen .chat-app .game-toolbar,
+body.chat-screen .chat-app .chat-tabs,
+body.chat-screen .chat-app .chat-thread-head,
+body.chat-screen .chat-app .game-back,
+body.chat-screen .chat-app .chat-find__note,
+body.chat-screen .chat-app #chat-error,
+body.chat-screen .chat-app .chat-jump {
+  flex: none;
 }
 
 .chat-app .chat-inbox-list a {
@@ -4810,6 +4929,23 @@ body.game-skin {
   opacity: 0.55;
 }
 
+.chat-ico {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-app .chat-find a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .chat-find__note {
   margin: 0.35rem 0 0;
   color: #9eb4c4;
@@ -4853,12 +4989,160 @@ body.game-skin {
 }
 
 @media (max-width: 959px) {
-  .chat-app:not(.chat-app--open) .chat-app__thread {
+  .chat-app:not(.chat-app--open) .chat-app__thread,
+  body.chat-screen .chat-app:not(.chat-app--open) .chat-app__thread {
     display: none;
   }
 
-  .chat-app--open .chat-app__list {
+  .chat-app--open .chat-app__list,
+  body.chat-screen .chat-app--open .chat-app__list {
     display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-app,
+  .chat-start {
+    padding-bottom: 1rem;
+  }
+
+  .chat-app .game-panel,
+  .chat-start .game-panel {
+    padding: 0.65rem 0.6rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .chat-app .game-title,
+  .chat-start .game-title {
+    font-size: 1.25rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .chat-app .game-back,
+  .chat-start .game-back {
+    margin-bottom: 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .chat-start .game-lead {
+    margin-bottom: 0.55rem;
+    font-size: 0.85rem;
+    line-height: 1.35;
+  }
+
+  .chat-app .chat-tabs {
+    gap: 0.25rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .chat-app .chat-tabs a {
+    min-height: 1.85rem;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.78rem;
+  }
+
+  .chat-app .chat-tools,
+  .chat-app .chat-find {
+    display: grid;
+    align-items: end;
+    gap: 0.35rem 0.4rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .chat-app .chat-tools {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .chat-app .chat-find {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .chat-app .chat-tools > label:first-of-type {
+    grid-column: 1 / -1;
+  }
+
+  .chat-app .chat-tools__check {
+    min-height: 2rem;
+    font-size: 0.8rem;
+  }
+
+  .chat-app .chat-tools input[type="search"],
+  .chat-app .chat-tools select,
+  .chat-app .chat-find input[type="search"],
+  .chat-start .game-form input[type="text"] {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.15rem;
+    padding: 0.28rem 0.5rem;
+    font-size: 1rem;
+  }
+
+  .chat-app .game-toolbar {
+    margin-bottom: 0.45rem;
+  }
+
+  .chat-app .game-btn,
+  .chat-start .game-btn {
+    min-height: 2rem;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.82rem;
+    gap: 0.3rem;
+  }
+
+  .chat-app .chat-ico,
+  .chat-start .chat-ico {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .chat-app .chat-inbox-list a {
+    padding: 0.35rem 0.15rem;
+    gap: 0.05rem 0.45rem;
+  }
+
+  .chat-app .chat-row__avatar {
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.7rem;
+  }
+
+  .chat-app .chat-inbox-list__preview {
+    font-size: 0.8rem;
+    line-height: 1.25;
+  }
+
+  .chat-app .chat-thread-head {
+    gap: 0.45rem;
+  }
+
+  .chat-app .game-chat-line {
+    padding: 0.3rem 0.5rem;
+  }
+
+  .chat-app .game-chat-form {
+    margin-top: 0.4rem;
+  }
+
+  .chat-app .game-chat-form fieldset {
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .chat-app .game-chat-form input[type="text"] {
+    min-width: 0;
+    min-height: 2.15rem;
+    padding: 0.28rem 0.5rem;
+    font-size: 1rem;
+  }
+
+  .chat-app .chat-suggest [role="option"] {
+    min-height: 2.15rem;
+    padding: 0.2rem 0.45rem;
+  }
+
+  .chat-start .game-form--stacked {
+    gap: 0.55rem;
   }
 }
 
@@ -4884,6 +5168,32 @@ body.game-skin {
     flex: 1 1 auto;
     max-height: none;
     min-height: 16rem;
+  }
+
+  body.chat-screen .game-page.chat-app {
+    display: grid;
+    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 1rem;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
+  body.chat-screen .chat-app__list,
+  body.chat-screen .chat-app__thread {
+    flex: none;
+    height: auto;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body.chat-screen .chat-app__thread .game-chat-log--room {
+    min-height: 0;
+    max-height: none;
   }
 }
 
