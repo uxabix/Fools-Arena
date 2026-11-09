@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('chat', '0005_alter_chatparticipant_user'),
-        ('game', '0003_turn_move'),
+        ('fools', '0003_turn_move'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='chat',
             name='lobby',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='chat', to='game.lobby'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='chat', to='fools.lobby'),
         ),
         migrations.AddField(
             model_name='message',

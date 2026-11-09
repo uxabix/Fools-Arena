@@ -1,15 +1,30 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}New direct chat · Fools Arena{% endblock %}
+{% block title %}New direct chat — Fools Arena{% endblock %}
 
 {% block content %}
-<h2>Open or continue a direct chat</h2>
-<p>Enter the other player's username (same account as used to log in).</p>
+<div class="game-page game-page--narrow chat-start">
+  <a class="game-back" href="{% url 'chat:inbox' %}">← Back to chats</a>
 
-<form method="post" action="">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Open chat</button>
-</form>
-<p><a href="{% url 'chat:inbox' %}">Back to inbox</a></p>
+  <section class="game-panel">
+    <h1 class="game-title">New direct message</h1>
+    <p class="game-lead">Search for a player by username, then open the conversation.</p>
+
+    <form method="post" class="game-form game-form--stacked" novalidate>
+      {% csrf_token %}
+      {% include "accounts/includes/form_fields.html" with form=form %}
+      <div class="game-form__full">
+        <button type="submit" class="game-btn game-btn--primary game-btn--block">
+          <svg class="chat-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5h14v9H8.5L5 18.2z"/></svg>
+          Open chat
+        </button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'chat/js/start_direct.js' %}?v={{ asset_chat_start_js_v }}"></script>
 {% endblock %}

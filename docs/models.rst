@@ -5,4 +5,4 @@ Models
 
 .. automodule:: chat.models
 
-.. automodule:: game.models
+.. automodule:: fools.models

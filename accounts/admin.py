@@ -1,4 +1,4 @@
-"""Admin configuration for the Durak card game application.
+"""Admin configuration for the accounts app (Fools Arena).
 
 This module defines the Django admin interface configuration for all models
 in the accounts app, providing a comprehensive management interface for
@@ -16,8 +16,7 @@ class UserAdmin(BaseUserAdmin):
     """Admin interface for the custom User model.
     
     Extends Django's built-in UserAdmin to handle the custom fields
-    and provide enhanced functionality for managing users in the
-    Durak card game application.
+    and provide enhanced functionality for managing users
     
     Features:
         - Custom list display with avatar preview
@@ -94,7 +93,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         ('User Creation', {
             'fields': ('username', 'email', 'password1', 'password2'),
-            'description': 'Create a new user account for the Durak game.'
+            'description': 'Create a new user account for the Durak fools.'
         }),
         ('Optional Information', {
             'fields': ('first_name', 'last_name', 'avatar_url'),

@@ -3,7 +3,7 @@
 import pytest
 
 from chat.models import Chat, Message
-from game.models import Lobby
+from fools.models import Lobby
 
 
 @pytest.mark.django_db

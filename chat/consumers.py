@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 
 from .models import Chat, ChatParticipant, Message
-from .services import assert_can_send_message
+from .services import assert_can_send_message, broadcast_chat_message, message_public
 
 User = get_user_model()
 
@@ -60,18 +60,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
             if message is None:
                 return
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "chat_message",
-                    "message": {
-                        "id": str(message.id),
-                        "sender": self.user.username,
-                        "content": message.content,
-                        "sent_at": str(message.sent_at)
-                    }
-                }
-            )
+            await self.broadcast_created(message)
 
     async def chat_message(self, event):
         await self.send(text_data=json.dumps(event["message"]))
@@ -107,10 +96,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return Message.objects.create(sender=self.user, chat=chat, content=content), None
 
     @database_sync_to_async
+    def broadcast_created(self, message):
+        """Fan a row out on the chat group. Failures are logged, not raised."""
+        broadcast_chat_message(message)
+
+    @database_sync_to_async
     def get_last_messages(self, limit=50):
         chat = Chat.objects.get(id=self.chat_id)
-        messages = chat.messages.order_by('-sent_at')[:limit]
-        return [
-            {"id": str(m.id), "sender": m.sender.username, "content": m.content, "sent_at": str(m.sent_at)}
-            for m in reversed(messages)
-        ]
+        messages = chat.messages.select_related("sender").order_by("-sent_at")[:limit]
+        return [message_public(m) for m in reversed(messages)]

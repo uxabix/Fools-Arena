@@ -1,4 +1,4 @@
-"""Pytest test suite for the Block model in the Durak card game application.
+"""Pytest test suite for the Block model in the fools Django application.
 
 This module contains unit tests for the accounts.models.Block model,
 which represents unilateral user blocking relationships. The tests

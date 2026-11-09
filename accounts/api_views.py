@@ -1,43 +1,79 @@
 """
 API views for the Accounts app.
 
-This module defines class-based views for handling user authentication
-via RESTful endpoints. It includes registration, login, profile retrieval,
-and logout functionality. These views are connected to the routes defined
-in accounts/api_urls.py and use serializers from accounts/serializers.py.
-
-Available API views:
-    - RegistrationAPI: create a new user and log them in automatically.
-    - LoginAPI: authenticate user credentials and start a session.
-    - ProfileAPI: return profile data for the authenticated user.
-    - LogoutAPI: end the current user session.
+Registration creates an inactive user and emails a confirmation link.
+Login starts a session only after that link has been opened.
 """
 
+import logging
+
+from django.conf import settings
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from .mail import send_account_confirmation
+from .ratelimit import TOO_MANY_EMAIL_REQUESTS, email_request_blocked
 from .serializers import RegistrationSerializer, LoginSerializer, ProfileSerializer
+
+logger = logging.getLogger(__name__)
 
 class RegistrationAPI(generics.CreateAPIView):
     """
     API endpoint for user registration.
 
-    Handles the creation of a new user account using validated input.
-    Automatically logs in the newly created user to establish a session.
+    Creates an inactive account and emails a confirmation link.
+    The response does not start a session.
     """
     serializer_class = RegistrationSerializer
     permission_classes = [permissions.AllowAny]
 
-    def perform_create(self, serializer):
-        """
-        Save the new user instance and log them in.
+    def create(self, request, *args, **kwargs):
+        """Validate, store the inactive user, and send the confirmation email.
 
-        Overrides the default CreateAPIView behavior to attach the user
-        to the current session immediately after registration.
+        Args:
+            request: DRF request with username, email, and password.
+
+        Returns:
+            Response: 201 with a confirmation notice, or 400 when invalid.
+        """
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.info(
+                "API registration failed: fields=%s",
+                ",".join(serializer.errors.keys()),
+            )
+            raise ValidationError(serializer.errors)
+        if email_request_blocked(request, serializer.validated_data.get("email") or ""):
+            return Response(
+                {"detail": TOO_MANY_EMAIL_REQUESTS},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        self.perform_create(serializer)
+        if settings.ACCOUNT_EMAIL_CONFIRMATION_REQUIRED:
+            detail = "Account created. A confirmation link was sent to your email."
+        else:
+            detail = "Account created. You are signed in."
+        return Response({"detail": detail}, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        """Save the inactive user and email the confirmation link.
+
+        Args:
+            serializer: Validated registration serializer.
         """
         user = serializer.save()
-        auth_login(self.request, user)
+        if not settings.ACCOUNT_EMAIL_CONFIRMATION_REQUIRED:
+            auth_login(
+                self.request,
+                user,
+                backend="django.contrib.auth.backends.ModelBackend",
+            )
+            logger.info("API registration without email confirmation: id=%s", user.pk)
+            return
+        send_account_confirmation(self.request, user)
+        logger.info("API registration awaiting confirmation: id=%s", user.pk)
 
 class LoginAPI(APIView):
     """
@@ -52,13 +88,17 @@ class LoginAPI(APIView):
         """
         Authenticate user credentials and start a session.
 
-        If credentials are valid, the user is logged in and their
-        profile data is returned in the response.
+        Failed attempts are logged with the username only.
+        An unconfirmed account gets the same error as a wrong password.
         """
         serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            attempted = str(request.data.get("username") or "")[:150]
+            logger.info("API sign-in failed for username=%s", attempted)
+            raise ValidationError(serializer.errors)
         user = serializer.validated_data['user']
         auth_login(request, user)
+        logger.info("API sign-in: id=%s", user.pk)
         return Response(ProfileSerializer(user).data)
 
 class ProfileAPI(generics.RetrieveAPIView):

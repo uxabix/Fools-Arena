@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Table — Durak — Fools Arena{% endblock %}
+{% block extra_head %}
+<script>document.documentElement.classList.add("play-screen");</script>
+{% endblock %}
+{% block body_modifiers %} play-screen{% endblock %}
+{% block content %}
+<div class="game-page play-page play-page--classic">
+  <header class="play-classic-bar">
+    <a id="back-lobby" class="game-btn game-btn--secondary play-leave play-leave--lobby" href="#">
+      <svg class="play-leave__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5M9 12h11"/></svg>
+      Back to lobby
+    </a>
+    <button type="button" id="btn-leave" class="game-btn game-btn--secondary play-leave play-leave--exit">
+      <svg class="play-leave__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h5a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-5"/><path d="M14 12H7.5M11 8.5 7.5 12 11 15.5"/></svg>
+      Leave game
+    </button>
+    <button type="button" id="btn-surrender" class="game-btn game-btn--secondary play-leave play-leave--surrender">
+      <svg class="play-leave__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5v17"/><path d="M6 5h10.5L14 8.2 16.5 11.5H6"/></svg>
+      Surrender
+    </button>
+    <div id="play-statusbar" class="play-statusbar" aria-live="polite"></div>
+    <p id="play-link" class="play-link" role="status" hidden></p>
+  </header>
+
+  <section id="play-result" class="play-result" hidden role="dialog" aria-modal="false" aria-labelledby="play-result-title" aria-describedby="play-result-text">
+    <div class="play-result__card">
+      <h2 id="play-result-title" tabindex="-1">Game over</h2>
+      <p id="play-result-text"></p>
+      <p id="play-result-note" class="play-result__note" hidden></p>
+      <div class="play-result__actions">
+        <button type="button" id="play-result-again" class="game-btn game-btn--primary" hidden>Play again</button>
+        <a id="play-result-lobby" class="game-btn game-btn--secondary" href="/fools/">Back to lobby</a>
+      </div>
+      <button type="button" id="play-result-table" class="play-result__table">Show table</button>
+      <a class="play-result__find" href="/fools/">Find a game</a>
+      <p id="play-result-error" class="text-error" hidden></p>
+    </div>
+  </section>
+
+  <div class="play-classic-layout">
+    <div class="play-ring" aria-label="Seats, clockwise from you. The next player is on the left.">
+      <p id="play-seat-order" class="play-seat-order">Clockwise from you. Next player is on the left.</p>
+      <div id="opponents" class="play-opponents" aria-label="Opponents, clockwise from you"></div>
+      <div class="play-ring__body">
+        <div id="seat-west" class="play-seat-bin"></div>
+        <div class="play-ring__main">
+          <div id="seat-north" class="play-seat-bin play-seat-bin--north"></div>
+          <div class="play-felt">
+      <button type="button" id="play-result-restore" class="game-btn game-btn--secondary play-result-restore" hidden aria-controls="play-result">Show result</button>
+      <div class="play-felt__inner">
+        <div class="play-piles">
+          <div id="deck-trump-corner" class="play-deck-trump" aria-label="Deck"></div>
+          <div id="discard-pile" class="play-discard" aria-label="Discard pile"></div>
+        </div>
+
+        <div id="table-mat" class="play-felt-center" aria-label="Table — trick area">
+          <div id="table-rows" class="play-table-grid"></div>
+        </div>
+      </div>
+          <section id="play-chat" class="play-chat play-table-chat" aria-label="Table chat">
+            <button type="button" id="play-chat-toggle" class="play-log__toggle play-chat__toggle" aria-expanded="false" aria-controls="play-chat-body" aria-label="Show chat">
+              <svg class="play-log__icon play-log__icon--hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5 12 8.5l6 6"/></svg>
+              <svg class="play-log__icon play-log__icon--show" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14a1.5 1.5 0 0 1 1.5 1.5v6.5A1.5 1.5 0 0 1 19 16.5H9.5L5 19.5V16.5A1.5 1.5 0 0 1 3.5 15V8.5A1.5 1.5 0 0 1 5 7z"/></svg>
+              <span id="play-chat-unread" class="chat-unread play-chat__unread" hidden></span>
+            </button>
+            <div id="play-chat-body" class="play-chat__body">
+              <h2 class="visually-hidden">Table chat</h2>
+              <p id="play-chat-status" class="chat-connection play-chat__status" role="status" hidden></p>
+              <div id="play-chat-log" class="game-chat-log game-chat-log--thread" role="log" aria-relevant="additions" aria-label="Table chat" tabindex="0"></div>
+              <button type="button" id="play-chat-jump" class="game-btn game-btn--secondary chat-jump" hidden>New messages</button>
+              <form id="play-chat-form" class="game-chat-form">
+                <input id="play-chat-input" name="content" type="text" maxlength="4000" placeholder="Message…" aria-label="Message" />
+                <button type="submit" class="game-btn game-btn--primary">Send</button>
+              </form>
+              <p id="play-chat-error" class="text-error" aria-live="polite"></p>
+            </div>
+          </section>
+          <div id="play-log" class="play-log is-open">
+            <button type="button" id="play-log-toggle" class="play-log__toggle" aria-expanded="true" aria-controls="play-history" aria-label="Hide log">
+              <svg class="play-log__icon play-log__icon--hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5 12 8.5l6 6"/></svg>
+              <svg class="play-log__icon play-log__icon--show" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5h14M5 12h14M5 16.5h9"/></svg>
+            </button>
+            <ol id="play-history" class="play-history" aria-label="Recent actions"></ol>
+          </div>
+          </div>
+        </div>
+        <div id="seat-east" class="play-seat-bin"></div>
+      </div>
+    </div>
+
+    <footer class="play-my-area" id="play-my-seat">
+      <div class="play-my-head">
+        <div id="play-my-role" class="play-my-role"></div>
+        <div id="play-my-badge" class="play-my-badge"></div>
+      </div>
+      <p id="play-my-duty" class="play-my-duty" hidden></p>
+      <p id="play-hint" class="play-hint" role="status"></p>
+      <p id="play-sending" class="play-sending is-idle" role="status" aria-hidden="true">Sending…</p>
+      <aside class="play-side-actions" aria-label="Actions" hidden>
+        <button type="button" id="btn-attack" class="game-btn game-btn--primary play-action-btn" hidden>
+          Attack
+        </button>
+        <button type="button" id="btn-transfer" class="game-btn game-btn--secondary play-action-btn" hidden>
+          Transfer
+        </button>
+        <button type="button" id="btn-take" class="game-btn game-btn--secondary play-action-btn" hidden>
+          Take cards
+        </button>
+        <button type="button" id="btn-bito" class="game-btn game-btn--primary play-action-btn" hidden>
+          Beaten
+        </button>
+        <button type="button" id="btn-done" class="game-btn game-btn--primary play-action-btn" hidden>
+          Done throwing
+        </button>
+      </aside>
+      <div class="play-hand-tools">
+        <button type="button" id="btn-sort" class="game-btn game-btn--secondary play-sort-btn" aria-label="Hand is sorted by suit with trump on the left. Switch to suit with trump on the right.">
+          Suit · trump left
+        </button>
+      </div>
+      <div id="play-my-sign" class="play-my-sign" aria-hidden="true"></div>
+      <div id="hand" class="play-hand-fan" aria-label="Your hand"></div>
+      <p class="play-hand-help">Select a card, then press Attack or Throw in. To beat a card, select one of yours and press the highlighted attack. Arrow keys move between cards. Dragging still works. Transfer happens only when you press Transfer.</p>
+      <p id="play-signal-note" class="play-hand-help" hidden>Other players see which cards you lift and when you reorder your hand. Card faces stay hidden.</p>
+      <p id="play-hand-cues" class="visually-hidden" aria-live="polite" aria-atomic="true"></p>
+    </footer>
+  </div>
+
+  <p id="err" class="text-error" aria-live="polite"></p>
+
+  <dialog id="leave-game-dialog" class="lobby-dialog" aria-labelledby="leave-game-title">
+    <h2 id="leave-game-title">Leave this game?</h2>
+    <p id="leave-game-text">You forfeit. The match ends, and you are the fool.</p>
+    <p id="leave-game-error" class="text-error" hidden></p>
+    <div class="lobby-dialog__actions">
+      <button type="button" id="leave-cancel" class="game-btn game-btn--secondary">Stay</button>
+      <button type="button" id="leave-confirm" class="game-btn game-btn--primary">Leave game</button>
+    </div>
+  </dialog>
+</div>
+<script>
+  window.FOOLS_CARD_BASE = "{% static 'fools/cards/ace-hearts.svg' %}".replace(/ace-hearts\.svg$/, "");
+</script>
+<script src="{% static 'fools/js/chat_thread.js' %}?v={{ asset_chat_thread_js_v }}"></script>
+<script src="{% static 'fools/js/play_table.js' %}?v={{ asset_js_v }}"></script>
+{% endblock %}

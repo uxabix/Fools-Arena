@@ -49,8 +49,8 @@ class TestChatModel:
 
     def test_get_owners_and_admins(self, user_factory):
         """Test retrieving owners and admins from a chat."""
-        owner = user_factory(username="owner")
-        admin = user_factory(username="admin")
+        owner = user_factory(username="chat_owner")
+        admin = user_factory(username="chat_admin")
         member = user_factory(username="member")
         chat = Chat.objects.create(name="Roles Chat")
 

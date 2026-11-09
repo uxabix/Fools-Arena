@@ -32,34 +32,34 @@ This Django project implements an online card game "Durak" with user profiles, g
 
 ---
 
-### 2️⃣ Game (`game`)
-**Purpose:** Core game logic, room management, and real-time gameplay.
+### 2️⃣ Fools (`fools`)
+**Purpose:** Core game logic, lobby management, and real-time gameplay.
 
 **Models:**
-- `Room` – game room (name, status)  
-- `Game` – game session (room, start/end time)  
-- `PlayerInGame` – relation User ↔ Game (role, cards, order)  
-- `Card` – card entity (suit, value)  
-- `Move` – game moves (attack, defense, draw)
+- `Lobby` – game lobby (name, status, settings)  
+- `Game` – game session (lobby, trump card, runtime state)  
+- `GamePlayer` – relation User ↔ Game (seat, cards remaining)  
+- `Card`, `CardSuit`, `CardRank` – card entities  
+- `Turn`, `Move`, `TableCard` – game moves and table state
 
 **Views / URLs:**
 - Templates:
-  - `/rooms/` – list of all rooms (HTML skeleton, JS pulls data)  
-  - `/rooms/<room_id>/` – game room page (HTML skeleton, JS pulls players, game state)
+  - `/fools/` – list of open lobbies (HTML shell, JS pulls data)  
+  - `/fools/lobbies/<lobby_id>/` – lobby page (players, chat, start game)  
+  - `/fools/play/<game_id>/` – active table UI
 - REST API:
-  - `/api/rooms/` – list of rooms  
-  - `/api/rooms/<id>/` – room details  
-  - `/api/rooms/<id>/players/` – players in room  
-  - `/api/games/<id>/` – current game state  
-  - `/api/games/<id>/moves/` – game history
+  - `/api/fools/lobbies/` – list/create lobbies  
+  - `/api/fools/lobbies/<id>/` – lobby details, join, leave, ready, start  
+  - `/api/fools/games/<id>/` – current game state and moves (attack, defend, etc.)
 
 **WebSocket:**
-- `/ws/game/<room_id>/` – real-time game events (player moves, card updates)
+- `/ws/lobbies/<lobby_id>/` – lobby events (player ready, game started)  
+- `/ws/games/<game_id>/` – real-time game events (player moves, card updates)
 
 **Responsibilities:**
-- Game mechanics implementation in `services.py` or `logic.py`  
-- Room creation/joining, game state management  
-- WebSocket consumer for real-time gameplay
+- Game mechanics implementation in `services.py`  
+- Lobby creation/joining, game state management  
+- WebSocket consumers for real-time gameplay
 
 ---
 
@@ -100,23 +100,23 @@ This Django project implements an online card game "Durak" with user profiles, g
 /accounts/register/
 /accounts/profile/
 /accounts/profile/<id>/
-/rooms/
-/rooms/<room_id>/
+/fools/
+/fools/lobbies/<lobby_id>/
+/fools/play/<game_id>/
 
 **REST API (JSON data for front-end):**
 /api/accounts/
 /api/accounts/<id>/
-/api/rooms/
-/api/rooms/<id>/
-/api/rooms/<id>/players/
-/api/games/<id>/
-/api/games/<id>/moves/
-/api/chat/rooms/<room_id>/messages/
-/api/chat/rooms/<room_id>/send/
+/api/fools/lobbies/
+/api/fools/lobbies/<id>/
+/api/fools/games/<id>/
+/api/chat/chats/
+/api/chat/chats/<chat_id>/messages/
 
 **WebSocket (real-time updates):**
-/ws/game/<room_id>/
-/ws/chat/<room_id>/
+/ws/lobbies/<lobby_id>/
+/ws/games/<game_id>/
+/ws/chat/<chat_id>/
 
 
 ---
@@ -135,6 +135,6 @@ This Django project implements an online card game "Durak" with user profiles, g
 | App        | Suggested Team Member Focus                  |
 |------------|----------------------------------------------|
 | `accounts` | Authentication, user profiles, API           |
-| `game`     | Core game logic, room management, WebSocket  |
+| `fools`    | Core game logic, lobby management, WebSocket  |
 | `chat`     | Chat logic, WebSocket, API endpoints         |
 | `common`   | Shared utilities and helpers (optional)      |

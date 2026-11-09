@@ -96,7 +96,7 @@ db.sqlite3-journal
 
 # Static and media
 staticfiles/
-static/
+/static/          # only root-level static/, if you ever add one
 media/
 uploads/
 

@@ -1,4 +1,4 @@
-"""Account models for the Durak online multiplayer card game.
+"""Account models for the Durak online multiplayer card game (Fools Arena).
 
 This module defines the User and Block models used for authentication,
 player identity management, and handling of user-to-user blocking within
@@ -7,20 +7,41 @@ the Durak multiplayer application.
 
 import uuid
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models.functions import Lower
+
+from .validators import (
+    USERNAME_MAX_LENGTH,
+    is_reserved_username,
+    validate_username_format,
+)
 
 
 class User(AbstractUser):
-    """Extended user model for the Durak card game application.
+    """Extended user model for the Fools Arena accounts app.
 
-    Extends Django ``AbstractUser`` with game-specific fields and helpers.
+    Extends Django ``AbstractUser`` with fools-specific fields and helpers.
     Uses a UUID primary key. Inherits standard auth fields from ``AbstractUser``
     (username, email, password, ``is_active``, ``is_staff``, etc.).
-    Reverse relations include lobby membership, game participation, messages,
+    Reverse relations include lobby membership, fools participation, messages,
     hands, and turns.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.CharField(
+        "username",
+        max_length=USERNAME_MAX_LENGTH,
+        unique=True,
+        help_text="3–30 characters. Letters, numbers, and underscore only.",
+        validators=[validate_username_format],
+        error_messages={
+            "unique": "A user with that username already exists.",
+            "max_length": "Use %d characters or fewer." % USERNAME_MAX_LENGTH,
+        },
+    )
+    email = models.EmailField("email address", unique=True, null=True, blank=True)
+    is_bot = models.BooleanField(default=False)
     avatar_url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -32,6 +53,37 @@ class User(AbstractUser):
         """
         return self.username
 
+    def save(self, *args, **kwargs):
+        """Store a trimmed, lowercased email, or NULL when it is empty.
+
+        Empty strings cannot share a unique column. NULL can, so accounts
+        created before email was required do not collide.
+        """
+        if self.email is not None:
+            normalized = self.email.strip().lower()
+            self.email = normalized or None
+        if self._state.adding and is_reserved_username(self.username or ""):
+            raise ValidationError({"username": "This username is reserved."})
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        """Reject a new account that takes a reserved username.
+
+        An account that already has a reserved name, such as an existing
+        ``admin`` user, can still be saved.
+        """
+        super().clean()
+        username = self.username or ""
+        if not is_reserved_username(username):
+            return
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values_list(
+                "username", flat=True
+            ).first()
+            if previous and previous.casefold() == username.casefold():
+                return
+        raise ValidationError({"username": "This username is reserved."})
+
     def get_full_display_name(self):
         """Return the user's display name with fallback to username.
 
@@ -40,6 +92,19 @@ class User(AbstractUser):
         """
         full_name = self.get_full_name()
         return full_name if full_name else self.username
+
+    def display_initials(self):
+        """Return one or two letters for an avatar that has no image.
+
+        Returns:
+            str: Uppercase letters from the username, or ``?`` when it has none.
+        """
+        letters = [character for character in (self.username or "") if character.isalnum()]
+        if not letters:
+            return "?"
+        if len(letters) == 1:
+            return letters[0].upper()
+        return (letters[0] + letters[1]).upper()
 
     def has_avatar(self):
         """Check whether the user has an avatar set.
@@ -59,7 +124,7 @@ class User(AbstractUser):
             Lobby | None: The active lobby instance, or None if the user
             is not currently in any lobby.
         """
-        from game.models import LobbyPlayer
+        from fools.models import LobbyPlayer
         try:
             lobby_player = LobbyPlayer.objects.get(
                 user=self,
@@ -73,16 +138,16 @@ class User(AbstractUser):
         """Return the game the user is currently playing.
 
         Returns:
-            Game | None: The active game instance, or None if the user
+            Game | None: The active fools instance, or None if the user
             is not participating in an in-progress match.
         """
-        from game.models import GamePlayer
+        from fools.models import GamePlayer
         try:
-            game_player = GamePlayer.objects.select_related('game').get(
+            game_player = GamePlayer.objects.select_related('fools').get(
                 user=self,
-                game__status='in_progress'
+                fools__status='in_progress'
             )
-            return game_player.game
+            return game_player.fools
         except GamePlayer.DoesNotExist:
             return None
 
@@ -112,7 +177,7 @@ class User(AbstractUser):
         Returns:
             bool: True if the user left a lobby, False if they were not part of any lobby.
         """
-        from game.models import LobbyPlayer
+        from fools.models import LobbyPlayer
         try:
             lobby_player = LobbyPlayer.objects.get(
                 user=self,
@@ -139,7 +204,7 @@ class User(AbstractUser):
                 games_lost (int)
                 win_rate (float)
         """
-        from game.models import Game, GamePlayer
+        from fools.models import Game, GamePlayer
 
         finished_games = Game.objects.filter(
             players__user=self,
@@ -170,6 +235,12 @@ class User(AbstractUser):
         verbose_name = 'User'
         verbose_name_plural = 'Users'
         ordering = ['username']
+        constraints = [
+            models.UniqueConstraint(
+                Lower("username"),
+                name="accounts_user_username_ci",
+            ),
+        ]
 
 
 class Block(models.Model):

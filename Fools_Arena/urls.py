@@ -18,21 +18,34 @@ Including another URLconf
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import HttpResponse
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.shortcuts import redirect
 from django.urls import path, include
 
+
+def home(request):
+    """Send visitors to games when signed in, otherwise to login."""
+    if request.user.is_authenticated:
+        return redirect("fools-lobby-list-page")
+    return redirect("login")
+
+
 urlpatterns = [
+    path("", home, name="home"),
     path("admin/", admin.site.urls),
     # UI
     path("accounts/", include("accounts.urls")),
     path("chat/", include("chat.urls")),
-    path("game/", include("game.urls")),
+    path("fools/", include("fools.urls")),
     # API
     path("api/accounts/", include("accounts.api_urls")),
     path("api/chat/", include("chat.api_urls")),
-    path("api/game/", include("game.api_urls")),
+    path("api/fools/", include("fools.api_urls")),
 ]
 
-# Add static files
-urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+# Static files: in DEBUG serve straight from app ``static/`` folders (no collectstatic needed).
+# When DEBUG is off, use a real web server or WhiteNoise + collectstatic in production.
+if settings.DEBUG:
+    urlpatterns += staticfiles_urlpatterns()
+else:
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

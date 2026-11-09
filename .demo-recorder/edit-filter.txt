@@ -1,0 +1,15 @@
+[0:v]trim=start=0:end=29.3,setpts=(PTS-STARTPTS)*1.28,scale=1280:720,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=start_mode=clone:start_duration=5[v0];
+[0:v]trim=start=29.3:end=44.79,setpts=(PTS-STARTPTS)*1.28,scale=1120:630,setsar=1[m];
+[1:v]trim=start=29.3:end=44.79,setpts=(PTS-STARTPTS)*1.28,scale=640:360,setsar=1[o];
+[2:v]trim=start=29.3:end=44.79,setpts=(PTS-STARTPTS)*1.28,scale=640:360,setsar=1[n];
+[m]pad=1920:1080:40:80:color=0x12151c[bg];
+[bg][o]overlay=1220:80[b1];
+[b1][n]overlay=1220:500,fps=25,tpad=start_mode=clone:start_duration=4[v1];
+[0:v]trim=start=44.79:end=54.01,setpts=(PTS-STARTPTS)*1.28,scale=1280:720,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=start_mode=clone:start_duration=3[v2];
+[1:v]trim=start=54.01:end=59.2,setpts=(PTS-STARTPTS)*1.28,scale=1280:720,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=start_mode=clone:start_duration=2[v3];
+[0:v]trim=start=59.2:end=69.45,setpts=(PTS-STARTPTS)*1.28,scale=1280:720,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25[v4];
+[3:v]setpts=PTS*1.28,scale=460:996,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=start_mode=clone:start_duration=3[v5];
+[4:v]setpts=PTS*1.28,scale=900:988,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=start_mode=clone:start_duration=2[v6];
+[0:v]trim=start=80.77:end=92.53,setpts=(PTS-STARTPTS)*1.28,scale=1280:720,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=start_mode=clone:start_duration=4[v7];
+[2:v]trim=start=92.53:end=97.4,setpts=(PTS-STARTPTS)*1.28,scale=1280:720,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x12151c,fps=25,tpad=stop_mode=clone:stop_duration=3[v8];
+[v0][v1][v2][v3][v4][v5][v6][v7][v8]concat=n=9:v=1:a=0[out]
