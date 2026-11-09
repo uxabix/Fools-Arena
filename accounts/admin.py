@@ -16,8 +16,7 @@ class UserAdmin(BaseUserAdmin):
     """Admin interface for the custom User model.
     
     Extends Django's built-in UserAdmin to handle the custom fields
-    and provide enhanced functionality for managing users in the
-    Fools Arena accounts app.
+    and provide enhanced functionality for managing users
     
     Features:
         - Custom list display with avatar preview

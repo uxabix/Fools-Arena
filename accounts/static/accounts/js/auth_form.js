@@ -6,6 +6,20 @@
 (function () {
   "use strict";
 
+  // Mark the submit button as busy and add visual feedback after form submission
+  function markAuthSubmitBusy(button) {
+    if (!button || button.disabled) return;
+    var label = button.querySelector(".auth-submit__label");
+    var loadingText = button.getAttribute("data-loading-label");
+    if (label && loadingText) label.textContent = loadingText;
+    button.setAttribute("aria-busy", "true");
+    button.classList.add("is-loading");
+    window.setTimeout(function () {
+      button.disabled = true;
+    }, 0);
+  }
+
+  // Toggle password visibility
   document.querySelectorAll(".auth-field__reveal").forEach(function (button) {
     button.addEventListener("click", function () {
       var input = document.getElementById(button.getAttribute("aria-controls"));
@@ -22,17 +36,15 @@
   });
 
   document.querySelectorAll("form[data-busy-submit]").forEach(function (busyForm) {
-    busyForm.addEventListener("submit", function () {
-      var button = busyForm.querySelector("[type=submit]");
-      if (!button) return;
-      var label = button.querySelector(".auth-submit__label");
-      var loadingText = button.getAttribute("data-loading-label");
-      if (label && loadingText) label.textContent = loadingText;
-      button.setAttribute("aria-busy", "true");
-      button.classList.add("is-loading");
-      window.setTimeout(function () {
-        button.disabled = true;
-      }, 0);
+    var sending = false;
+    busyForm.addEventListener("submit", function (event) {
+      if (sending) {
+        event.preventDefault();
+        return;
+      }
+      sending = true;
+      var button = busyForm.querySelector(".auth-submit") || busyForm.querySelector("[type=submit]");
+      markAuthSubmitBusy(button);
     });
   });
 
@@ -488,15 +500,7 @@
     }
     submitting = true;
     var button = form.querySelector(".auth-submit");
-    if (!button) return;
-    var label = button.querySelector(".auth-submit__label");
-    var loadingText = button.getAttribute("data-loading-label");
-    if (label && loadingText) label.textContent = loadingText;
-    button.setAttribute("aria-busy", "true");
-    button.classList.add("is-loading");
-    window.setTimeout(function () {
-      button.disabled = true;
-    }, 0);
+    markAuthSubmitBusy(button);
   });
 
   captureServerState();

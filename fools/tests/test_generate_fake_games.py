@@ -22,7 +22,7 @@ def test_generate_fake_games_creates_games(user_factory):
        non-null lobby assignment.
     """
 
-    user = user_factory(username="owner")
+    user = user_factory(username="lobby_owner")
     lobby = Lobby.objects.create(owner=user, name="FakeLobby")
 
     count_before = Game.objects.count()

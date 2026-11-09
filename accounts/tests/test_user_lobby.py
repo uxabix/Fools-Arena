@@ -76,7 +76,7 @@ class TestUserLobbyMethods:
             user_factory: A fixture to create users.
             test_user: A fixture for a test user.
         """
-        owner = user_factory(username='owner')
+        owner = user_factory(username='lobby_owner')
         full_lobby = lobby_factory(owner=owner, max_players=1)
         LobbyPlayer.objects.create(lobby=full_lobby, user=owner, status='waiting')
         assert test_user.can_join_lobby(full_lobby) is False
