@@ -419,3 +419,202 @@ def test_leaving_the_match_removes_you_while_others_stay(test_user, second_user,
     assert lobby.owner_id == second_user.id
     assert not lobby.players.filter(user=test_user).exclude(status="left").exists()
     assert lobby.players.filter(user=second_user).exclude(status="left").exists()
+
+
+def _playing_card(suit, value):
+    return Card.objects.get(
+        special_card__isnull=True, suit__name=suit, rank__value=value
+    )
+
+
+@pytest.mark.django_db
+def test_bot_defender_beats_with_the_lowest_card(durak_deck_36, user_factory):
+    """The runner plays the strategy: the cheaper of two legal covers hits the row."""
+    from fools.models import PlayerHand, TableCard
+
+    attacker = user_factory(username="beat_human")
+    defender = user_factory(username="beat_bot", is_bot=True)
+    lobby = Lobby.objects.create(owner=attacker, name="bot-beat", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=_playing_card("Spades", 14),
+        status="in_progress",
+        runtime_state={
+            "phase": "build",
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    six = _playing_card("Hearts", 6)
+    eight = _playing_card("Hearts", 8)
+    ten = _playing_card("Hearts", 10)
+    spare = _playing_card("Diamonds", 9)
+    row = TableCard.objects.create(fools=game, attack_card=six)
+    PlayerHand.objects.create(fools=game, player=defender, card=ten, order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=defender, card=eight, order_in_hand=2)
+    PlayerHand.objects.create(fools=game, player=attacker, card=spare, order_in_hand=1)
+
+    run_bots(game)
+    row.refresh_from_db()
+    assert row.defense_card_id == eight.id
+    assert PlayerHand.objects.filter(fools=game, player=defender, card=ten).exists()
+
+
+@pytest.mark.django_db
+def test_bot_defender_takes_when_nothing_beats(durak_deck_36, user_factory):
+    """A hand that cannot cover the attack declares a take and leaves the table for the human."""
+    from fools.models import PlayerHand, TableCard
+
+    attacker = user_factory(username="take_human")
+    defender = user_factory(username="take_bot", is_bot=True)
+    lobby = Lobby.objects.create(owner=attacker, name="bot-take", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=_playing_card("Spades", 14),
+        status="in_progress",
+        runtime_state={
+            "phase": "build",
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    six = _playing_card("Hearts", 6)
+    useless = _playing_card("Diamonds", 7)
+    spare = _playing_card("Clubs", 9)
+    TableCard.objects.create(fools=game, attack_card=six)
+    PlayerHand.objects.create(fools=game, player=defender, card=useless, order_in_hand=1)
+    PlayerHand.objects.create(fools=game, player=attacker, card=spare, order_in_hand=1)
+
+    run_bots(game)
+    game.refresh_from_db()
+    assert game.runtime_state["phase"] == "taking"
+    assert TableCard.objects.filter(fools=game, attack_card=six).exists()
+    assert PlayerHand.objects.filter(fools=game, player=defender, card=useless).exists()
+
+
+@pytest.mark.django_db
+def test_bot_attacker_calls_bito_when_nobody_else_can_throw(durak_deck_36, user_factory):
+    """A fully beaten wave ends once no person holds a rank that is already on the table."""
+    from fools.models import TableCard
+
+    attacker = user_factory(username="bito_bot", is_bot=True)
+    defender = user_factory(username="bito_human")
+    lobby = Lobby.objects.create(owner=defender, name="bot-bito", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=_playing_card("Spades", 14),
+        status="in_progress",
+        runtime_state={
+            "phase": "build",
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    from fools.models import PlayerHand
+
+    TableCard.objects.create(
+        fools=game,
+        attack_card=_playing_card("Hearts", 6),
+        defense_card=_playing_card("Hearts", 8),
+    )
+    PlayerHand.objects.create(
+        fools=game, player=attacker, card=_playing_card("Clubs", 9), order_in_hand=1
+    )
+    PlayerHand.objects.create(
+        fools=game, player=defender, card=_playing_card("Diamonds", 10), order_in_hand=1
+    )
+
+    run_bots(game)
+    game.refresh_from_db()
+    assert not TableCard.objects.filter(fools=game).exists()
+    assert game.runtime_state["attacker_id"] == str(defender.id)
+    assert game.runtime_state["defender_id"] == str(attacker.id)
+    assert game.status == "in_progress"
+
+
+@pytest.mark.django_db
+def test_run_bots_leaves_a_beaten_wave_for_the_human(durak_deck_36, user_factory):
+    """run_bots does not call bito while a person can still throw the shown rank."""
+    from fools.models import PlayerHand, TableCard
+
+    attacker = user_factory(username="wait_bot", is_bot=True)
+    defender = user_factory(username="wait_def", is_bot=True)
+    human = user_factory(username="wait_human")
+    lobby = Lobby.objects.create(owner=human, name="bot-wait", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=3, card_count=36)
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=_playing_card("Spades", 14),
+        status="in_progress",
+        runtime_state={
+            "phase": "build",
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender, human), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    six = _playing_card("Hearts", 6)
+    TableCard.objects.create(
+        fools=game, attack_card=six, defense_card=_playing_card("Hearts", 10)
+    )
+    PlayerHand.objects.create(
+        fools=game, player=human, card=_playing_card("Diamonds", 6), order_in_hand=1
+    )
+    PlayerHand.objects.create(
+        fools=game, player=defender, card=_playing_card("Clubs", 9), order_in_hand=1
+    )
+
+    run_bots(game)
+    game.refresh_from_db()
+    assert game.runtime_state["phase"] == "build"
+    assert TableCard.objects.filter(fools=game, attack_card=six).exists()
+
+
+@pytest.mark.django_db
+def test_cancel_bots_drops_a_pending_tick(durak_deck_36, user_factory):
+    """A bito scheduled before cancel does not close the wave."""
+    from fools.bots.runner import _bito_after_window, _tokens, cancel_bots
+    from fools.models import PlayerHand, TableCard
+
+    attacker = user_factory(username="cancel_bot", is_bot=True)
+    defender = user_factory(username="cancel_human")
+    lobby = Lobby.objects.create(owner=defender, name="bot-cancel", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=_playing_card("Spades", 14),
+        status="in_progress",
+        runtime_state={
+            "phase": "build",
+            "attacker_id": str(attacker.id),
+            "defender_id": str(defender.id),
+        },
+    )
+    for seat, user in enumerate((attacker, defender), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+    six = _playing_card("Hearts", 6)
+    TableCard.objects.create(
+        fools=game, attack_card=six, defense_card=_playing_card("Hearts", 8)
+    )
+    PlayerHand.objects.create(
+        fools=game, player=attacker, card=_playing_card("Clubs", 9), order_in_hand=1
+    )
+    PlayerHand.objects.create(
+        fools=game, player=defender, card=_playing_card("Diamonds", 10), order_in_hand=1
+    )
+    _tokens[str(game.id)] = 5
+    cancel_bots(game.id)
+    assert _bito_after_window(game, 5) is False
+    game.refresh_from_db()
+    assert TableCard.objects.filter(fools=game, attack_card=six).exists()
+    assert game.runtime_state["attacker_id"] == str(attacker.id)

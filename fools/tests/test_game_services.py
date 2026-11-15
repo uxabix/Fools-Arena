@@ -31,8 +31,10 @@ from fools.services import (
     pass_throw,
     play_attack,
     release_finished_seats,
+    rematch,
     set_ready,
     start_game,
+    surrender_game,
     take_table,
     transfer_attack,
 )
@@ -704,3 +706,144 @@ def test_defender_cannot_take_a_fully_beaten_table(durak_deck_36, user_factory):
     with pytest.raises(GameError) as exc:
         take_table(game, defender)
     assert exc.value.code == "state"
+
+
+@pytest.mark.django_db
+def test_one_remaining_hand_is_the_fool(durak_deck_36, user_factory):
+    """An empty deck and a single hand left names that player the fool."""
+    holder = user_factory(username="last_holder")
+    other = user_factory(username="last_out")
+    lobby = Lobby.objects.create(owner=holder, name="last-hand", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=trump,
+        status="in_progress",
+        runtime_state={"phase": PHASE_BETWEEN, "attacker_id": str(other.id)},
+    )
+    GamePlayer.objects.create(fools=game, user=holder, seat_position=1, cards_remaining=1)
+    GamePlayer.objects.create(fools=game, user=other, seat_position=2, cards_remaining=0)
+    LobbyPlayer.objects.create(lobby=lobby, user=holder, status="playing")
+    LobbyPlayer.objects.create(lobby=lobby, user=other, status="playing")
+    card = Card.objects.filter(special_card__isnull=True).exclude(id=trump.id).first()
+    PlayerHand.objects.create(fools=game, player=holder, card=card, order_in_hand=1)
+
+    _maybe_finish_game(game)
+    game.refresh_from_db()
+    lobby.refresh_from_db()
+    assert game.status == "finished"
+    assert game.loser_id == holder.id
+    assert lobby.status == "waiting"
+
+
+@pytest.mark.django_db
+def test_surrender_finishes_and_keeps_the_lobby_seat(durak_deck_36, user_factory):
+    """Surrender names the caller the fool and leaves them seated."""
+    caller = user_factory(username="surrender_a")
+    other = user_factory(username="surrender_b")
+    lobby = Lobby.objects.create(owner=caller, name="surrender", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(lobby=lobby, trump_card=trump, status="in_progress")
+    for seat, user in enumerate((caller, other), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=1)
+        LobbyPlayer.objects.create(lobby=lobby, user=user, status="playing")
+
+    surrender_game(game, caller)
+    game.refresh_from_db()
+    lobby.refresh_from_db()
+    seat = LobbyPlayer.objects.get(lobby=lobby, user=caller)
+    assert game.status == "finished"
+    assert game.loser_id == caller.id
+    assert seat.status != "left"
+    assert lobby.status == "waiting"
+
+
+@pytest.mark.django_db
+def test_surrender_rejects_someone_who_is_not_seated(durak_deck_36, user_factory):
+    """A user with no seat cannot end the match."""
+    seated = user_factory(username="surrender_seat")
+    outsider = user_factory(username="surrender_out")
+    lobby = Lobby.objects.create(owner=seated, name="surrender-out", status="playing")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(lobby=lobby, trump_card=trump, status="in_progress")
+    GamePlayer.objects.create(fools=game, user=seated, seat_position=1, cards_remaining=1)
+
+    with pytest.raises(GameError) as exc:
+        surrender_game(game, outsider)
+    assert exc.value.code == "forbidden"
+    game.refresh_from_db()
+    assert game.status == "in_progress"
+
+
+@pytest.mark.django_db
+def test_surrender_of_a_finished_match_keeps_the_loser(durak_deck_36, user_factory):
+    """A second surrender does not replace the player who already lost."""
+    first = user_factory(username="surrender_first")
+    loser = user_factory(username="surrender_loser")
+    lobby = Lobby.objects.create(owner=first, name="surrender-again", status="waiting")
+    LobbySettings.objects.create(lobby=lobby, max_players=2, card_count=36)
+    trump = Card.objects.filter(special_card__isnull=True).first()
+    game = Game.objects.create(lobby=lobby, trump_card=trump, status="finished", loser=loser)
+    for seat, user in enumerate((first, loser), start=1):
+        GamePlayer.objects.create(fools=game, user=user, seat_position=seat, cards_remaining=0)
+
+    returned = surrender_game(game, first)
+    returned.refresh_from_db()
+    assert returned.id == game.id
+    assert returned.loser_id == loser.id
+
+
+def _ready_pair(owner, other):
+    lobby = create_lobby(owner, "again", is_private=False, max_players=2)
+    join_lobby(lobby, other)
+    set_ready(lobby, owner, True)
+    set_ready(lobby, other, True)
+    return lobby
+
+
+@pytest.mark.django_db
+def test_host_can_rematch_a_finished_game(test_user, second_user, durak_deck_36):
+    """The host deals a new match for whoever is still seated."""
+    lobby = _ready_pair(test_user, second_user)
+    game = start_game(lobby, test_user)
+    game.status = "finished"
+    game.save(update_fields=["status"])
+    lobby.status = "waiting"
+    lobby.save(update_fields=["status"])
+    LobbyPlayer.objects.filter(lobby=lobby).update(status="waiting")
+
+    new_game = rematch(game, test_user)
+    game.refresh_from_db()
+    assert new_game.id != game.id
+    assert new_game.status == "in_progress"
+    assert game.status == "finished"
+
+
+@pytest.mark.django_db
+def test_rematch_is_refused_for_a_player_who_is_not_the_host(test_user, second_user, durak_deck_36):
+    lobby = _ready_pair(test_user, second_user)
+    game = start_game(lobby, test_user)
+    game.status = "finished"
+    game.save(update_fields=["status"])
+    lobby.status = "waiting"
+    lobby.save(update_fields=["status"])
+    LobbyPlayer.objects.filter(lobby=lobby).update(status="waiting")
+
+    with pytest.raises(GameError) as exc:
+        rematch(game, second_user)
+    assert exc.value.code == "forbidden"
+    assert Game.objects.filter(lobby=lobby).count() == 1
+
+
+@pytest.mark.django_db
+def test_rematch_is_refused_while_the_match_is_running(test_user, second_user, durak_deck_36):
+    lobby = _ready_pair(test_user, second_user)
+    game = start_game(lobby, test_user)
+
+    with pytest.raises(GameError) as exc:
+        rematch(game, test_user)
+    assert exc.value.code == "state"
+    assert Game.objects.filter(lobby=lobby).count() == 1

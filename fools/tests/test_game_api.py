@@ -5,7 +5,16 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from fools.models import Game
+from fools.models import (
+    Card,
+    Game,
+    GamePlayer,
+    Lobby,
+    LobbyPlayer,
+    LobbySettings,
+    PlayerHand,
+    TableCard,
+)
 
 
 @pytest.mark.django_db
@@ -251,3 +260,268 @@ class TestGameLobbyAPI:
         assert "Create lobby" in html
         assert "Refresh" in html
         assert "Neighbors only" in html
+
+
+def _card(suit, value):
+    """Return one catalog card. Duplicate suit/rank rows pick the oldest id."""
+    return (
+        Card.objects.filter(suit__name=suit, rank__value=value, special_card__isnull=True)
+        .order_by("id")
+        .first()
+    )
+
+
+def _seat(game, user, seat, *cards):
+    GamePlayer.objects.create(
+        fools=game, user=user, seat_position=seat, cards_remaining=len(cards)
+    )
+    LobbyPlayer.objects.create(lobby=game.lobby, user=user, status="playing")
+    for index, card in enumerate(cards, start=1):
+        PlayerHand.objects.create(
+            fools=game, player=user, card=card, order_in_hand=index
+        )
+
+
+def _table(owner, *others, phase="between", transferable=False):
+    """Two or three seated humans, trump ace of spades, no deck and no bots."""
+    lobby = Lobby.objects.create(owner=owner, name="API moves", status="playing")
+    LobbySettings.objects.create(
+        lobby=lobby,
+        max_players=max(2, 1 + len(others)),
+        card_count=36,
+        is_transferable=transferable,
+    )
+    game = Game.objects.create(
+        lobby=lobby,
+        trump_card=_card("Spades", 14),
+        status="in_progress",
+        runtime_state={
+            "phase": phase,
+            "attacker_id": str(owner.id),
+            "defender_id": str(others[0].id),
+            "passed_ids": [],
+        },
+    )
+    return game
+
+
+@pytest.mark.django_db
+class TestGameMoveAPI:
+    """Table actions over HTTP, with cards placed by the test rather than dealt."""
+
+    @pytest.fixture
+    def api(self):
+        return APIClient()
+
+    def test_attacker_opens_with_a_card_from_hand(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user)
+        six = _card("Hearts", 6)
+        _seat(game, test_user, 1, six)
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        api.force_login(test_user)
+        response = api.post(
+            reverse("api-fools-attack", kwargs={"game_id": game.id}),
+            {"card_ids": [str(six.id)]},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["runtime"]["phase"] == "build"
+        assert TableCard.objects.filter(fools=game, attack_card=six).exists()
+        assert not PlayerHand.objects.filter(fools=game, player=test_user, card=six).exists()
+
+    def test_outsider_cannot_attack(self, api, test_user, second_user, user_factory, durak_deck_36):
+        game = _table(test_user, second_user)
+        six = _card("Hearts", 6)
+        _seat(game, test_user, 1, six)
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        api.force_login(user_factory(username="watcher"))
+        response = api.post(
+            reverse("api-fools-attack", kwargs={"game_id": game.id}),
+            {"card_ids": [str(six.id)]},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not TableCard.objects.filter(fools=game).exists()
+
+    def test_defender_cannot_open_the_attack(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user)
+        seven = _card("Hearts", 7)
+        _seat(game, test_user, 1, _card("Hearts", 6))
+        _seat(game, second_user, 2, seven)
+        api.force_login(second_user)
+        response = api.post(
+            reverse("api-fools-attack", kwargs={"game_id": game.id}),
+            {"card_ids": [str(seven.id)]},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert PlayerHand.objects.filter(fools=game, player=second_user, card=seven).exists()
+
+    def test_attack_without_cards_is_rejected(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user)
+        _seat(game, test_user, 1, _card("Hearts", 6))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        api.force_login(test_user)
+        response = api.post(
+            reverse("api-fools-attack", kwargs={"game_id": game.id}),
+            {},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert not TableCard.objects.filter(fools=game).exists()
+
+    def test_defender_beats_a_row(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        six = _card("Hearts", 6)
+        seven = _card("Hearts", 7)
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, seven)
+        row = TableCard.objects.create(fools=game, attack_card=six)
+        api.force_login(second_user)
+        response = api.post(
+            reverse("api-fools-defend", kwargs={"game_id": game.id}),
+            {"table_card_id": str(row.id), "card_id": str(seven.id)},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        row.refresh_from_db()
+        assert row.defense_card_id == seven.id
+
+    def test_attacker_cannot_defend(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        six = _card("Hearts", 6)
+        nine = _card("Hearts", 9)
+        _seat(game, test_user, 1, nine)
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        row = TableCard.objects.create(fools=game, attack_card=six)
+        api.force_login(test_user)
+        response = api.post(
+            reverse("api-fools-defend", kwargs={"game_id": game.id}),
+            {"table_card_id": str(row.id), "card_id": str(nine.id)},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        row.refresh_from_db()
+        assert row.defense_card_id is None
+
+    def test_attacker_can_seal_the_wave(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        TableCard.objects.create(fools=game, attack_card=_card("Hearts", 6))
+        api.force_login(test_user)
+        response = api.post(reverse("api-fools-seal", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        game.refresh_from_db()
+        assert game.runtime_state["phase"] == "build"
+
+    def test_defender_cannot_seal(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        TableCard.objects.create(fools=game, attack_card=_card("Hearts", 6))
+        api.force_login(second_user)
+        response = api.post(reverse("api-fools-seal", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_defender_declares_take_and_cards_stay_until_pass(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        six = _card("Hearts", 6)
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        TableCard.objects.create(fools=game, attack_card=six)
+        api.force_login(second_user)
+        response = api.post(reverse("api-fools-take", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["runtime"]["phase"] == "taking"
+        assert TableCard.objects.filter(fools=game, attack_card=six).exists()
+
+    def test_attacker_pass_gives_the_table_to_the_defender(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="taking")
+        six = _card("Hearts", 6)
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        TableCard.objects.create(fools=game, attack_card=six)
+        api.force_login(test_user)
+        response = api.post(reverse("api-fools-pass", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        game.refresh_from_db()
+        assert game.runtime_state["phase"] == "between"
+        assert not TableCard.objects.filter(fools=game).exists()
+        assert PlayerHand.objects.filter(fools=game, player=second_user, card=six).exists()
+
+    def test_bito_clears_a_beaten_table_and_swaps_roles(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, _card("Clubs", 10))
+        TableCard.objects.create(
+            fools=game,
+            attack_card=_card("Hearts", 6),
+            defense_card=_card("Hearts", 7),
+        )
+        api.force_login(test_user)
+        response = api.post(reverse("api-fools-bito", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        game.refresh_from_db()
+        assert not TableCard.objects.filter(fools=game).exists()
+        assert game.runtime_state["attacker_id"] == str(second_user.id)
+        assert game.runtime_state["defender_id"] == str(test_user.id)
+        assert game.status == "in_progress"
+
+    def test_bito_is_refused_while_a_card_is_open(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        six = _card("Hearts", 6)
+        _seat(game, test_user, 1, _card("Diamonds", 9))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        TableCard.objects.create(fools=game, attack_card=six)
+        api.force_login(test_user)
+        response = api.post(reverse("api-fools-bito", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert TableCard.objects.filter(fools=game, attack_card=six).exists()
+
+    def test_defender_transfers_to_the_next_seat(self, api, test_user, second_user, user_factory, durak_deck_36):
+        third = user_factory(username="third_seat")
+        game = _table(test_user, second_user, third, phase="build", transferable=True)
+        six_hearts = _card("Hearts", 6)
+        six_diamonds = _card("Diamonds", 6)
+        _seat(game, test_user, 1, _card("Clubs", 9))
+        _seat(game, second_user, 2, six_diamonds)
+        _seat(game, third, 3, _card("Clubs", 10), _card("Spades", 8))
+        TableCard.objects.create(fools=game, attack_card=six_hearts)
+        api.force_login(second_user)
+        response = api.post(
+            reverse("api-fools-transfer", kwargs={"game_id": game.id}),
+            {"card_ids": [str(six_diamonds.id)]},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        game.refresh_from_db()
+        assert game.runtime_state["defender_id"] == str(third.id)
+        assert game.runtime_state["attacker_id"] == str(test_user.id)
+        assert TableCard.objects.filter(fools=game).count() == 2
+
+    def test_surrender_finishes_the_match_and_keeps_the_seat(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        _seat(game, test_user, 1, _card("Hearts", 6))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        api.force_login(test_user)
+        response = api.post(reverse("api-fools-surrender", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        game.refresh_from_db()
+        assert game.status == "finished"
+        assert game.loser_id == test_user.id
+        seat = LobbyPlayer.objects.get(lobby=game.lobby, user=test_user)
+        assert seat.status != "left"
+
+    def test_leave_finishes_the_match_and_drops_the_seat(self, api, test_user, second_user, durak_deck_36):
+        game = _table(test_user, second_user, phase="build")
+        _seat(game, test_user, 1, _card("Hearts", 6))
+        _seat(game, second_user, 2, _card("Hearts", 7))
+        api.force_login(test_user)
+        response = api.post(reverse("api-fools-leave", kwargs={"game_id": game.id}), {}, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        game.refresh_from_db()
+        assert game.status == "finished"
+        assert game.loser_id == test_user.id
+        seat = LobbyPlayer.objects.get(lobby=game.lobby, user=test_user)
+        assert seat.status == "left"
