@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Check your email — Fools Arena{% endblock %}
+
+{% block content %}
+<div class="game-page game-page--narrow">
+  <section class="game-panel game-panel--auth">
+    <h1 class="game-title">Check your email</h1>
+    <p class="game-lead">Account created. We sent a confirmation link to your email. You can sign in after you open that link.</p>
+
+    <form method="post" action="{% url 'resend-confirmation' %}" class="game-form game-form--stacked auth-form">
+      {% csrf_token %}
+      <div class="auth-field">
+        <label class="auth-field__label" for="id_resend_email">Email</label>
+        <input id="id_resend_email" class="fools-input" type="email" name="email" placeholder="name@example.com" autocomplete="email" inputmode="email" spellcheck="false" required>
+      </div>
+      <div class="auth-form__actions">
+        <button type="submit" class="game-btn game-btn--primary game-btn--block auth-submit">Send the link again</button>
+      </div>
+    </form>
+
+    <p class="game-footnote">
+      Already confirmed? <a href="{% url 'login' %}">Sign in</a>
+    </p>
+  </section>
+</div>
+{% endblock %}

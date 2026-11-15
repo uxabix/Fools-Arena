@@ -1,7 +1,10 @@
 """Tests for private DM REST endpoints and blocking rules."""
 
+from datetime import timedelta
+
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 
 from accounts.models import Block
@@ -66,6 +69,9 @@ class TestPrivateMessagingAPI:
         gr = api_client.get(murl)
         assert gr.status_code == status.HTTP_200_OK
         assert any(m["content"] == "hello" for m in gr.data)
+        found = api_client.get(murl, {"q": "hello", "envelope": "1"})
+        assert found.status_code == status.HTTP_200_OK
+        assert [row["content"] for row in found.data["results"]] == ["hello"]
 
     def test_blocked_user_cannot_post_dm(
         self, api_client, test_user, second_user
@@ -113,3 +119,52 @@ class TestPrivateMessagingAPI:
         murl = reverse("chat-messages", kwargs={"chat_id": str(chat.pk)})
         pr = api_client.post(murl, {"content": "x"}, format="json")
         assert pr.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_message_pages_and_read_mark(self, api_client, test_user, second_user):
+        """Older pages walk backward, and reading the newest line clears unread."""
+        self._login(api_client, test_user)
+        chat, _ = Chat.objects.get_or_create_direct(test_user, second_user)
+        first = Message.objects.create(sender=second_user, chat=chat, content="one")
+        second = Message.objects.create(sender=second_user, chat=chat, content="two")
+        third = Message.objects.create(sender=test_user, chat=chat, content="three")
+        Message.objects.filter(pk=first.pk).update(sent_at=timezone.now() - timedelta(minutes=3))
+        Message.objects.filter(pk=second.pk).update(sent_at=timezone.now() - timedelta(minutes=2))
+        Message.objects.filter(pk=third.pk).update(sent_at=timezone.now() - timedelta(minutes=1))
+        murl = reverse("chat-messages", kwargs={"chat_id": chat.pk})
+        page = api_client.get(murl, {"limit": 2, "envelope": "1"})
+        assert page.status_code == status.HTTP_200_OK
+        assert page.data["has_older"] is True
+        assert [row["content"] for row in page.data["results"]] == ["two", "three"]
+        older = api_client.get(
+            murl,
+            {"limit": 2, "envelope": "1", "before": page.data["results"][0]["id"]},
+        )
+        assert [row["content"] for row in older.data["results"]] == ["one"]
+        assert older.data["has_older"] is False
+        listed = api_client.get(reverse("chat-list"))
+        row = next(item for item in listed.data if item["id"] == str(chat.pk))
+        assert row["unread_count"] == 2
+        assert row["last_message"]["content"] == "three"
+        read = api_client.post(
+            reverse("chat-read", kwargs={"chat_id": chat.pk}),
+            {"message_id": str(third.pk)},
+            format="json",
+        )
+        assert read.status_code == status.HTTP_200_OK
+        listed = api_client.get(reverse("chat-list"))
+        row = next(item for item in listed.data if item["id"] == str(chat.pk))
+        assert row["unread_count"] == 0
+
+    def test_user_search_is_a_short_prefix(self, api_client, test_user, user_factory):
+        """Suggestions need two characters and skip bots and the caller."""
+        self._login(api_client, test_user)
+        user_factory(username="AlphaOne")
+        user_factory(username="Alphabot", is_bot=True)
+        url = reverse("chat-user-search")
+        short = api_client.get(url, {"q": "a"})
+        assert short.status_code == status.HTTP_400_BAD_REQUEST
+        found = api_client.get(url, {"q": "alp"})
+        assert found.status_code == status.HTTP_200_OK
+        names = [row["username"] for row in found.data["results"]]
+        assert names == ["AlphaOne"]
+        assert "email" not in found.data["results"][0]

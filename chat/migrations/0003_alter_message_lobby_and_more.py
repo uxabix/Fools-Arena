@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('chat', '0002_alter_message_options'),
-        ('game', '0003_turn_move'),
+        ('fools', '0003_turn_move'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='message',
             name='lobby',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='game.lobby'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='fools.lobby'),
         ),
         migrations.AddIndex(
             model_name='message',

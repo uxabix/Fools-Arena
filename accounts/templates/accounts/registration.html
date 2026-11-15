@@ -1,13 +1,39 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Register{% endblock %}
+{% block title %}Register — Fools Arena{% endblock %}
 
 {% block content %}
-<h1>Registration</h1>
-<form method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Register</button>
-</form>
-<a href="{% url 'login' %}">Already exist? Login</a>
+<div class="game-page game-page--narrow">
+  <section class="game-panel game-panel--auth">
+    <h1 class="game-title">Create account</h1>
+    <p class="game-lead">Choose a username, email, and password. We will email you a confirmation link before you can sign in.</p>
+
+    <form method="post" class="game-form game-form--stacked auth-form" data-auth-form="register" data-password-min="{{ password_min_length|default:8 }}" data-password-max="{{ password_max_length|default:128 }}" data-username-min="{{ username_min_length|default:3 }}" data-username-max="{{ username_max_length|default:30 }}" data-reserved-usernames="{{ reserved_usernames }}" novalidate>
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="form-errors auth-form__banner" role="alert">
+        {% for error in form.non_field_errors %}
+        <p><span class="field-error__icon" aria-hidden="true">⚠</span> {{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% include "accounts/includes/auth_fields.html" %}
+      <div class="auth-form__actions">
+        <button type="submit" class="game-btn game-btn--primary game-btn--block auth-submit" data-loading-label="Creating account…">
+          <span class="auth-submit__spinner" aria-hidden="true"></span>
+          <span class="auth-submit__label">Create account</span>
+        </button>
+      </div>
+    </form>
+
+    <p class="game-footnote">
+      Already registered? <a href="{% url 'login' %}">Sign in</a>
+    </p>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'accounts/js/auth_form.js' %}?v={{ asset_auth_js_v }}"></script>
 {% endblock %}

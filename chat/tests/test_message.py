@@ -1,5 +1,7 @@
 """Tests for the Message model in the chat app."""
 
+from datetime import timedelta
+
 import pytest
 from django.utils import timezone
 
@@ -158,6 +160,9 @@ class TestMessageModel:
             chat=chat,
             content="Newer message",
         )
+        now = timezone.now()
+        Message.objects.filter(pk=older_message.pk).update(sent_at=now - timedelta(seconds=1))
+        Message.objects.filter(pk=newer_message.pk).update(sent_at=now)
 
         messages = list(Message.objects.filter(chat=chat))
         # Meta.ordering = ['-sent_at'], newest first

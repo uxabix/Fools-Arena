@@ -9,8 +9,8 @@
 ┌───────────────┴───────────────┐
 │        Django Templates       │
 │ (HTML skeleton for pages)     │
-│   - /rooms/                   │
-│   - /rooms/<room_id>/         │
+│   - /fools/                   │
+│   - /fools/lobbies/<id>/      │
 │   - /accounts/...             │
 └───────────────┬───────────────┘
                 │
@@ -25,10 +25,8 @@
   ┌─────────────┴──────────────┐
   │       REST API (JSON)      │
   │  - /api/accounts/          │
-  │  - /api/rooms/             │
-  │  - /api/rooms/<id>/players/│
-  │  - /api/games/<id>/        │
-  │  - /api/games/<id>/moves/  │
+  │  - /api/fools/lobbies/     │
+  │  - /api/fools/games/<id>/  │
   │  - /api/chat/...           │
   └─────────────┬──────────────┘
                 │
@@ -44,7 +42,8 @@
     ┌─────────────┐   ┌─────────────────┐
     │  Database   │   │  WebSocket      │
     │  PostgreSQL │   │  Django Channels│
-    └─────────────┘   │  /ws/game/...   │
+    └─────────────┘   │  /ws/games/...  │
+                      │  /ws/lobbies/.. │
                       │  /ws/chat/...   │
                       └─────────────────┘
                       
