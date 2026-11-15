@@ -9,10 +9,12 @@ class MessageSerializer(serializers.ModelSerializer):
     """Serialize stored chat messages for read APIs."""
 
     sender = serializers.CharField(source="sender.username", read_only=True)
+    sender_id = serializers.UUIDField(read_only=True)
+    kind = serializers.CharField(read_only=True)
 
     class Meta:
         model = Message
-        fields = ["id", "sender", "content", "sent_at"]
+        fields = ["id", "sender", "sender_id", "content", "sent_at", "kind"]
 
 
 class MessageCreateSerializer(serializers.ModelSerializer):
@@ -37,6 +39,9 @@ class ChatSerializer(serializers.ModelSerializer):
 
     peer_username = serializers.SerializerMethodField()
     peer_id = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    last_activity = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Chat
@@ -50,6 +55,9 @@ class ChatSerializer(serializers.ModelSerializer):
             "dm_pair_key",
             "peer_username",
             "peer_id",
+            "last_message",
+            "last_activity",
+            "unread_count",
         ]
         read_only_fields = ["dm_pair_key"]
 
@@ -72,6 +80,30 @@ class ChatSerializer(serializers.ModelSerializer):
             return None
         other = obj.get_other_participant(request.user)
         return str(other.pk) if other else None
+
+    def get_last_message(self, obj):
+        """Return a short preview of the newest line, when the queryset annotated it."""
+        from .services import preview_text
+
+        content = getattr(obj, "last_content", None)
+        if not content:
+            return None
+        sent = getattr(obj, "last_sent_at", None)
+        return {
+            "sender": getattr(obj, "last_sender_name", "") or "",
+            "content": preview_text(content, limit=160),
+            "sent_at": sent.isoformat() if sent else None,
+            "kind": getattr(obj, "last_kind", None) or "user",
+        }
+
+    def get_last_activity(self, obj):
+        """Return the newest message time, or None for an empty chat."""
+        sent = getattr(obj, "last_sent_at", None)
+        return sent.isoformat() if sent else None
+
+    def get_unread_count(self, obj):
+        """Return annotated unread messages, or zero when the annotation is absent."""
+        return int(getattr(obj, "unread_count", 0) or 0)
 
 
 class DirectChatCreateSerializer(serializers.Serializer):

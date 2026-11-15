@@ -1,5 +1,5 @@
 """
-Fixtures for testing the Durak card game Django application.
+Fixtures for testing the fools Django application.
 
 This module provides reusable pytest fixtures for creating users, cards,
 lobbies, games, and special cards/rule sets. The fixtures include both
@@ -30,7 +30,7 @@ django.setup()
 
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
-from game.models import (
+from fools.models import (
     CardSuit, CardRank, Card, Lobby, LobbySettings,
     Game, GamePlayer, SpecialCard, SpecialRuleSet
 )
@@ -227,7 +227,7 @@ def game_factory(db):
                     - finished_at (datetime): When the game finished.
 
     Example:
-        game = game_factory(
+        fools = game_factory(
             lobby=lobby,
             trump_card=ace_of_hearts,
             status='in_progress'
@@ -276,14 +276,14 @@ def game_player_factory(db):
     Returns:
         callable: Function that creates and returns a GamePlayer instance.
             Args:
-                game (Game): The game instance.
+                fools (Game): The fools instance.
                 user (User): The player's user instance.
                 seat_position (int): Player's seat position (1-based).
                 cards_remaining (int): Number of cards in player's hand.
 
     Example:
         player = game_player_factory(
-            game=game,
+            fools=fools,
             user=user,
             seat_position=1,
             cards_remaining=6
@@ -292,7 +292,7 @@ def game_player_factory(db):
 
     def create_game_player(game, user, seat_position, cards_remaining=6):
         return GamePlayer.objects.create(
-            game=game,
+            fools=game,
             user=user,
             seat_position=seat_position,
             cards_remaining=cards_remaining

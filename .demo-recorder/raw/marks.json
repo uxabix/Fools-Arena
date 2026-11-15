@@ -1,0 +1,46 @@
+[
+  {
+    "name": "login",
+    "at": 0
+  },
+  {
+    "name": "lobbies",
+    "at": 10.26
+  },
+  {
+    "name": "create",
+    "at": 18.14
+  },
+  {
+    "name": "split",
+    "at": 29.3
+  },
+  {
+    "name": "game",
+    "at": 44.79
+  },
+  {
+    "name": "oleg-view",
+    "at": 54.01
+  },
+  {
+    "name": "responsive",
+    "at": 69.45
+  },
+  {
+    "name": "profile",
+    "at": 80.77
+  },
+  {
+    "name": "dm",
+    "at": 88.89
+  },
+  {
+    "name": "nina-inbox",
+    "at": 92.53
+  },
+  {
+    "name": "end",
+    "at": 97.57
+  }
+]

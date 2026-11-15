@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Confirmation link — Fools Arena{% endblock %}
+
+{% block content %}
+<div class="game-page game-page--narrow">
+  <section class="game-panel game-panel--auth">
+    <h1 class="game-title">Link not valid</h1>
+    <p class="game-lead">This confirmation link is invalid or has expired. Request another one and open the newest email.</p>
+    <p class="game-footnote">
+      <a href="{% url 'register-done' %}">Send the link again</a>
+    </p>
+  </section>
+</div>
+{% endblock %}

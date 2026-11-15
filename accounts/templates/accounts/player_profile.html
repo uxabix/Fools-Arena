@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player.username }} — Fools Arena{% endblock %}
+
+{% block content %}
+<div class="game-page profile-page">
+  <section class="game-panel">
+    <div class="profile-identity">
+      <span class="profile-avatar" aria-hidden="true">
+        <span class="profile-avatar__initials">{{ initials }}</span>
+        {% if player.has_avatar %}
+        <img src="{{ player.avatar_url }}" alt="" onerror="this.remove()">
+        {% endif %}
+      </span>
+      <div class="profile-identity__text">
+        <p class="profile-kicker">Player</p>
+        <h1 class="game-title profile-name">{{ player.username }}</h1>
+        {% if is_self %}<p class="game-status">This is your public profile.</p>{% endif %}
+      </div>
+    </div>
+
+    <div class="profile-actions">
+      {% if is_self %}
+      <a class="game-btn game-btn--secondary" href="{% url 'profile' %}">Account settings</a>
+      {% else %}
+      <form method="post" action="{% url 'chat:start_direct' %}">
+        {% csrf_token %}
+        <input type="hidden" name="other_username" value="{{ player.username }}">
+        <button type="submit" class="game-btn game-btn--primary">Message</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <section class="profile-record" aria-labelledby="player-record-title">
+      <h2 id="player-record-title" class="profile-section-title">Record</h2>
+      {% if stats.total_games == 0 %}
+      <p class="profile-empty">No finished games yet.</p>
+      {% endif %}
+      <dl class="profile-stats">
+        <div>
+          <dt>Finished games</dt>
+          <dd>{{ stats.total_games }}</dd>
+        </div>
+        <div>
+          <dt>Wins</dt>
+          <dd>{{ stats.games_won }}</dd>
+        </div>
+        <div>
+          <dt>Losses</dt>
+          <dd>{{ stats.games_lost }}</dd>
+        </div>
+        <div>
+          <dt>Win rate</dt>
+          <dd>{% if stats.total_games == 0 %}<span aria-label="Not available">—</span>{% else %}{{ stats.win_rate|floatformat:"-1" }}%{% endif %}</dd>
+        </div>
+      </dl>
+    </section>
+  </section>
+</div>
+{% endblock %}

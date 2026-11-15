@@ -1,21 +1,42 @@
 {% extends "base.html" %}
 
-{% block title %}Chats · Fools Arena{% endblock %}
+{% block title %}Chat — Fools Arena{% endblock %}
 
 {% block content %}
-<h2>Your chats</h2>
-<p><a href="{% url 'chat:start_direct' %}">Start a direct message</a></p>
+<div class="game-page">
+  <section class="game-panel">
+    <h1 class="game-title">Chat</h1>
+    <p class="game-lead">Direct messages and lobby chats, newest activity first.</p>
 
-{% if chat_rows %}
-<ul class="chat-inbox-list">
-    {% for row in chat_rows %}
-    <li>
-        <a href="{% url 'chat:room' chat_id=row.chat.pk %}">{{ row.title }}</a>
-        <small>({{ row.chat.pk }})</small>
-    </li>
-    {% endfor %}
-</ul>
-{% else %}
-<p>No chats yet. Open a <a href="{% url 'chat:start_direct' %}">direct conversation</a>.</p>
-{% endif %}
+    <p class="game-toolbar">
+      <a href="{% url 'chat:start_direct' %}" class="game-btn game-btn--primary">New direct message</a>
+    </p>
+
+    {% if chat_rows %}
+    <ul class="game-lobby-list chat-inbox-list" aria-label="Chat list">
+      {% for row in chat_rows %}
+      <li>
+        <a href="{% url 'chat:room' chat_id=row.chat.pk %}">
+          <span class="chat-inbox-list__title">{{ row.title }}</span>
+          <span class="chat-inbox-list__meta">
+            {% if row.unread %}
+            <span class="chat-unread">
+              <span aria-hidden="true">{{ row.unread_label }}</span>
+              <span class="visually-hidden">{{ row.unread }} unread</span>
+            </span>
+            {% endif %}
+            {% if row.when %}
+            <time datetime="{{ row.when_iso }}">{{ row.when }}</time>
+            {% endif %}
+          </span>
+          <span class="chat-inbox-list__preview">{{ row.preview }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="game-status">No chats yet. Start a <a href="{% url 'chat:start_direct' %}">direct conversation</a>.</p>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

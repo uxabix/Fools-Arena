@@ -63,7 +63,7 @@ class TestUserModel:
     def test_create_superuser(self):
         """Tests creating a superuser."""
         admin = User.objects.create_superuser(
-            username="admin",
+            username="superadmin",
             email="admin@example.com",
             password="admin123"
         )

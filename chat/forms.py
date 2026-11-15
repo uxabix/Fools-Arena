@@ -10,6 +10,9 @@ class StartDirectChatForm(forms.Form):
         max_length=150,
         label="Other user's username",
         help_text="Case-insensitive match to an existing account.",
+        widget=forms.TextInput(
+            attrs={"class": "fools-input", "placeholder": "Username", "autocomplete": "off"}
+        ),
     )
 
     def clean_other_username(self):
@@ -23,7 +26,11 @@ class ChatMessageForm(forms.Form):
     content = forms.CharField(
         max_length=10000,
         widget=forms.Textarea(
-            attrs={"rows": 3, "placeholder": "Type a message…", "class": "chat-input"}
+            attrs={
+                "rows": 3,
+                "placeholder": "Type a message…",
+                "class": "fools-input fools-input--textarea",
+            }
         ),
     )
 

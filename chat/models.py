@@ -1,4 +1,4 @@
-"""Chat models for the Durak card game application.
+"""Chat models for the fools Django application.
 
 This module defines the core models for managing chat rooms and their participants
 in the Durak online multiplayer system. It includes models for representing chats,
@@ -81,7 +81,7 @@ def dm_pair_key(user_a, user_b):
 class Chat(models.Model):
     """Represents a chat room (private, group, or lobby).
 
-    Chats are used to isolate different communication contexts in the game:
+    Chats are used to isolate different communication contexts in the fools app:
     - private chats (DM between two users)
     - group chats
     - automatically created lobby chats (is_lobby=True)
@@ -100,7 +100,7 @@ class Chat(models.Model):
     is_global = models.BooleanField(default=False)
 
     lobby = models.ForeignKey(
-        "game.Lobby",
+        "fools.Lobby",
         on_delete=models.CASCADE,
         null=True,
         blank=True,
@@ -211,6 +211,12 @@ class Chat(models.Model):
         """
         if not self.is_direct_message():
             return None
+        cached = getattr(self, "_prefetched_objects_cache", {}).get("chatparticipant_set")
+        if cached is not None:
+            for row in cached:
+                if row.user_id != user.pk:
+                    return row.user
+            return None
         return self.get_participants().exclude(pk=user.pk).first()
 
 
@@ -218,6 +224,8 @@ class ChatParticipant(models.Model):
     """Represents a user's membership in a chat with assigned permissions.
 
     Each user can belong to multiple chats and have different roles in each.
+    ``last_read_at`` is how far this member has read. It is not shown to
+    other people as a read receipt.
     """
 
     ROLE_CHOICES = [
@@ -231,6 +239,11 @@ class ChatParticipant(models.Model):
     user = models.ForeignKey('accounts.User', related_name='chat_participations', on_delete=models.CASCADE)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='member')
     joined_at = models.DateTimeField(auto_now_add=True)
+    last_read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Newest moment this member has caught up to. Empty means nothing is read.",
+    )
 
     class Meta:
         verbose_name = "Chat Participant"
@@ -270,13 +283,22 @@ class Message(models.Model):
 
     Messages belong strictly to a ``Chat`` instance. Lobby and direct messages
     differ by chat type only; there are no separate lobby or receiver fields
-    on this model.
+    on this model. ``kind`` is ``system`` for a notice the server wrote, such
+    as a settings change. Players cannot choose that kind themselves.
     """
+
+    KIND_USER = "user"
+    KIND_SYSTEM = "system"
+    KIND_CHOICES = [
+        (KIND_USER, "User"),
+        (KIND_SYSTEM, "System"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sender = models.ForeignKey('accounts.User', on_delete=models.CASCADE, related_name='sent_messages')
     chat = models.ForeignKey(Chat, on_delete=models.CASCADE, related_name="messages")
     content = models.TextField()
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default=KIND_USER)
     sent_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
