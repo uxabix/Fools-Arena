@@ -1,6 +1,9 @@
 """Tests for common query patterns on the Message model."""
 
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 
 from chat.models import Chat, Message
 from fools.models import Lobby
@@ -58,6 +61,9 @@ class TestMessageQueries:
             chat=self.private_chat,
             content="private",
         )
+        now = timezone.now()
+        Message.objects.filter(pk=msg1.pk).update(sent_at=now - timedelta(seconds=1))
+        Message.objects.filter(pk=msg2.pk).update(sent_at=now)
 
         messages = list(
             Message.objects.filter(chat=self.lobby_chat).order_by("-sent_at")
@@ -152,6 +158,9 @@ class TestMessageQueries:
             chat=self.private_chat,
             content="Second",
         )
+        now = timezone.now()
+        Message.objects.filter(pk=msg1.pk).update(sent_at=now - timedelta(seconds=1))
+        Message.objects.filter(pk=msg2.pk).update(sent_at=now)
 
         messages = list(
             Message.objects.filter(chat=self.private_chat).order_by("-sent_at")

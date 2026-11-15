@@ -1,4 +1,4 @@
-"""Account models for the Durak online multiplayer card game (Fools Arena).
+"""Account models for Fools Arena.
 
 This module defines the User and Block models used for authentication,
 player identity management, and handling of user-to-user blocking within
@@ -21,10 +21,10 @@ from .validators import (
 class User(AbstractUser):
     """Extended user model for the Fools Arena accounts app.
 
-    Extends Django ``AbstractUser`` with fools-specific fields and helpers.
+    Extends Django ``AbstractUser`` with game-specific fields and helpers.
     Uses a UUID primary key. Inherits standard auth fields from ``AbstractUser``
     (username, email, password, ``is_active``, ``is_staff``, etc.).
-    Reverse relations include lobby membership, fools participation, messages,
+    Reverse relations include lobby membership, game participation, messages,
     hands, and turns.
     """
 

@@ -1,11 +1,14 @@
 """Tests for lobby-related models: Lobby, LobbySettings, and LobbyPlayer.
 
-This module tests lobby creation, player management, fools readiness checks,
+This module tests lobby creation, player management, game readiness checks,
 and lobby settings configuration.
 """
 
+from datetime import timedelta
+
 import pytest
 from django.db import IntegrityError
+from django.utils import timezone
 from fools.models import Lobby, LobbySettings, LobbyPlayer, SpecialRuleSet
 
 
@@ -102,7 +105,7 @@ class TestLobbyModel:
     def test_can_start_game_method_not_enough_players(self, basic_lobby, test_user):
         """Test can_start_game() returns False with insufficient ready players.
 
-        A fools requires at least 2 ready players to start.
+        A game requires at least 2 ready players to start.
         """
         # Add only 1 ready player
         LobbyPlayer.objects.create(
@@ -125,7 +128,7 @@ class TestLobbyModel:
         """Test can_start_game() returns False if lobby status is not 'waiting'.
 
         Only lobbies in 'waiting' status can start a game. Lobbies that are
-        'playing', 'closed', or have other statuses cannot start a new fools.
+        'playing', 'closed', or have other statuses cannot start a new game.
         """
         LobbyPlayer.objects.create(lobby=basic_lobby, user=test_user, status='ready')
         LobbyPlayer.objects.create(lobby=basic_lobby, user=second_user, status='ready')
@@ -169,6 +172,9 @@ class TestLobbyModel:
             name="Newer Lobby",
             status='waiting'
         )
+        now = timezone.now()
+        Lobby.objects.filter(pk=lobby1.pk).update(created_at=now - timedelta(seconds=1))
+        Lobby.objects.filter(pk=lobby2.pk).update(created_at=now)
 
         lobbies = list(Lobby.objects.all())
 

@@ -1,4 +1,4 @@
-"""Admin configuration for the chat app (Fools Arena).
+"""Admin configuration for the chat app.
 
 This module defines the Django admin interface configuration for all models
 in the chat app, providing comprehensive management tools for administrators

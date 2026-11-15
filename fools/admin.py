@@ -148,8 +148,8 @@ class CardRankAdmin(admin.ModelAdmin):
 class LobbyAdmin(admin.ModelAdmin):
     """Admin interface for the Lobby model.
 
-    Provides comprehensive management capabilities for fools lobbies including
-    player management, fools status tracking, and lobby configuration.
+    Provides comprehensive management capabilities for game lobbies including
+    player management, game status tracking, and lobby configuration.
 
     Features:
         - Visual status indicators with privacy settings
@@ -220,7 +220,7 @@ class LobbyAdmin(admin.ModelAdmin):
         }),
         ('Game Status', {
             'fields': ('status', 'player_count_display', 'can_start_display'),
-            'description': 'Current lobby state and fools readiness.'
+            'description': 'Current lobby state and game readiness.'
         }),
         ('Statistics', {
             'fields': ('lobby_statistics',),
@@ -371,7 +371,7 @@ class LobbyAdmin(admin.ModelAdmin):
             obj (Lobby): The lobby instance.
 
         Returns:
-            str: Visual indicator for fools start readiness.
+            str: Visual indicator for game start readiness.
         """
         if obj.can_start_game():
             return format_html('<span style="color: #28a745;">✅ Ready</span>')
@@ -491,7 +491,7 @@ class LobbyPlayerInline(admin.TabularInline):
 class LobbySettingsAdmin(admin.ModelAdmin):
     """Admin interface for the LobbySettings model.
 
-    Provides management capabilities for lobby fools configuration settings
+    Provides management capabilities for lobby configuration settings
     with validation and rule compatibility checking.
 
     Features:
@@ -544,7 +544,7 @@ class LobbySettingsAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Basic Settings', {
             'fields': ('id', 'lobby', 'max_players', 'card_count'),
-            'description': 'Core fools configuration parameters.'
+            'description': 'Core game configuration parameters.'
         }),
         ('Game Rules', {
             'fields': (
@@ -844,7 +844,7 @@ class GameAdmin(admin.ModelAdmin):
     """Admin interface for the Game model.
 
     Provides comprehensive management capabilities for fools sessions
-    with detailed tracking of fools state, players, and statistics.
+    with detailed tracking of game state, players, and statistics.
 
     Features:
         - Game status tracking with visual indicators
@@ -852,7 +852,7 @@ class GameAdmin(admin.ModelAdmin):
         - Game duration and statistics display
         - Trump card information with suit indicators
         - Advanced filtering by lobby, status, and duration
-        - Custom actions for fools management
+        - Custom actions for game management
 
     Attributes:
         list_display: Fields shown in the game list view
@@ -911,7 +911,7 @@ class GameAdmin(admin.ModelAdmin):
         }),
         ('Game Status', {
             'fields': ('status', 'player_count_display', 'winner_display'),
-            'description': 'Current fools state and outcome information.'
+            'description': 'Current game state and outcome information.'
         }),
         ('Timing Information', {
             'fields': ('started_at', 'finished_at', 'duration_display'),
@@ -924,7 +924,7 @@ class GameAdmin(admin.ModelAdmin):
         }),
         ('Statistics', {
             'fields': ('game_statistics',),
-            'description': 'Detailed fools statistics and analytics.',
+            'description': 'Detailed game statistics and analytics.',
             'classes': ('collapse',)
         }),
     )
@@ -932,13 +932,13 @@ class GameAdmin(admin.ModelAdmin):
     actions = ['finish_games', 'export_game_data']
 
     def game_info_display(self, obj):
-        """Display fools information with ID.
+        """Display game information with ID.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
-            str: Formatted fools info with truncated ID.
+            str: Formatted fools game with truncated ID.
         """
         short_id = str(obj.id)[:8]
         return f"Game {short_id}..."
@@ -965,7 +965,7 @@ class GameAdmin(admin.ModelAdmin):
         """Display fools status with visual indicators.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
             str: HTML formatted status with color coding.
@@ -984,7 +984,7 @@ class GameAdmin(admin.ModelAdmin):
         """Display trump card information with suit indicator.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
             str: HTML formatted trump card with suit emoji.
@@ -1019,7 +1019,7 @@ class GameAdmin(admin.ModelAdmin):
         """Display number of players in the game.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
             str: Player count with visual indicator.
@@ -1030,10 +1030,10 @@ class GameAdmin(admin.ModelAdmin):
     player_count_display.short_description = "Players"
 
     def duration_display(self, obj):
-        """Display fools duration information.
+        """Display game duration information.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
             str: Formatted duration or current runtime.
@@ -1059,13 +1059,13 @@ class GameAdmin(admin.ModelAdmin):
     duration_display.short_description = "Duration"
 
     def winner_display(self, obj):
-        """Display fools winner information.
+        """Display fools game information.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
-            str: Winner information or fools status.
+            str: Winner information or game status.
         """
         if obj.status == 'finished' and obj.loser:
             winners = obj.get_winner()
@@ -1084,10 +1084,10 @@ class GameAdmin(admin.ModelAdmin):
     winner_display.short_description = "Winner"
 
     def game_statistics(self, obj):
-        """Display comprehensive fools statistics.
+        """Display comprehensive game statistics.
 
         Args:
-            obj (Game): The fools instance.
+            obj (Game): The game instance.
 
         Returns:
             str: HTML formatted statistics summary.
@@ -1155,7 +1155,7 @@ class GameAdmin(admin.ModelAdmin):
     finish_games.short_description = "Finish selected games (Superuser only)"
 
     def export_game_data(self, request, queryset):
-        """Custom admin action to export fools data.
+        """Custom admin action to export game data.
 
         Args:
             request: The HTTP request object.
@@ -1164,10 +1164,10 @@ class GameAdmin(admin.ModelAdmin):
         count = queryset.count()
         self.message_user(
             request,
-            f"Export initiated for {count} fools(s). Download link will be provided when ready."
+            f"Export initiated for {count} game(s). Download link will be provided when ready."
         )
 
-    export_game_data.short_description = "Export fools data"
+    export_game_data.short_description = "Export game data"
 
 
 @admin.register(GamePlayer)
@@ -1179,7 +1179,7 @@ class GamePlayerAdmin(admin.ModelAdmin):
 
     Features:
         - Player position and card count tracking
-        - Direct links to fools and user admin pages
+        - Direct links to game and user admin pages
         - Elimination status monitoring
         - Seat position management
         - Card count validation
@@ -1289,7 +1289,7 @@ class CardAdmin(admin.ModelAdmin):
     """Admin interface for the Card model.
 
     Provides management capabilities for playing cards with suit and rank
-    organization, special card identification, and fools usage tracking.
+    organization, special card identification, and game usage tracking.
 
     Features:
         - Visual card representation with suit colors
@@ -1764,7 +1764,7 @@ class SpecialRuleSetCardAdmin(admin.ModelAdmin):
     """Admin interface for the SpecialRuleSetCard model.
 
     Provides management capabilities for special card associations within
-    rule sets with enable/disable functionality and fools compatibility.
+    rule sets with enable/disable functionality and game compatibility.
 
     Features:
         - Rule set and card association management
@@ -1868,7 +1868,7 @@ class SpecialRuleSetCardAdmin(admin.ModelAdmin):
     status_display.admin_order_field = 'is_enabled'
 
     def compatibility_display(self, obj):
-        """Display fools compatibility information.
+        """Display game compatibility information.
 
         Args:
             obj (SpecialRuleSetCard): The association instance.
@@ -1928,7 +1928,7 @@ class SpecialRuleSetCardAdmin(admin.ModelAdmin):
 class GameDeckAdmin(admin.ModelAdmin):
     """Admin interface for the GameDeck model.
 
-    Basic management interface for fools deck cards with position tracking.
+    Basic management interface for game deck cards with position tracking.
     """
     list_display = ('card', 'game_link', 'position', 'is_last_card')
     list_filter = (('fools', admin.RelatedOnlyFieldListFilter),)
@@ -2022,7 +2022,7 @@ class DiscardPileAdmin(admin.ModelAdmin):
 class TurnAdmin(admin.ModelAdmin):
     """Admin interface for the Turn model.
 
-    Management interface for fools turns with move tracking.
+    Management interface for game turns with move tracking.
     """
     list_display = ('turn_number', 'player', 'game_link', 'move_count', 'completion_status')
     list_filter = (

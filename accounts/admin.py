@@ -1,4 +1,4 @@
-"""Admin configuration for the accounts app (Fools Arena).
+"""Admin configuration for the accounts app
 
 This module defines the Django admin interface configuration for all models
 in the accounts app, providing a comprehensive management interface for

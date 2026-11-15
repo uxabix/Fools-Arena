@@ -1,8 +1,8 @@
-"""Request-body serializers for fools REST endpoints.
+"""Request serializers for the Fools REST API.
 
-These are intentionally lightweight (no ``ModelSerializer``) because responses
-are built from :func:`fools.services.serialize_lobby` /
-:func:`fools.services.serialize_game`.
+These serializers validate client input; service functions handle game rules
+and database updates. Lobby and game response payloads are built separately
+by ``serialize_lobby()`` and ``serialize_game()``.
 """
 
 from rest_framework import serializers

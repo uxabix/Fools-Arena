@@ -1,4 +1,4 @@
-"""Game models for the game Django application.
+"""Game models for the game application.
 
 This module contains all the Django models that define the game logic,
 lobby management, card representations, and player interactions for
@@ -257,7 +257,7 @@ class LobbyPlayer(models.Model):
         ordering = ['lobby', 'user__username']
 
 class Game(models.Model):
-    """Core game session model for Durak.
+    """Core game session model for the game.
 
     Represents an active or completed game session within a lobby.
     Handles game state, trump card selection, and player management.

@@ -1,6 +1,6 @@
 """Tests for turn and move tracking models.
 
-This module tests Turn and Move models which track fools progression,
+This module tests Turn and Move models which track game progression,
 player actions, and move history.
 """
 

@@ -1,7 +1,6 @@
 /**
- * Login and registration forms: field checks, password rules, show/hide, submit state.
- * Server-side validation remains the source of truth. This script only
- * explains failures earlier and does not block paste or password managers.
+ * Login and registration forms: field checks, password rules, submit state.
+ * This script only adds local checks in addition to server validation.
  */
 (function () {
   "use strict";

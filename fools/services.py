@@ -1,8 +1,8 @@
-"""Business logic for multiplayer Durak (podkidnoy).
+"""Business logic for Fool's Arena.
 
 This module owns lobby lifecycle, dealing from the shared card pool, table
-phases (build / defend / between), and persistence updates on existing Django
-models. It also triggers WebSocket broadcasts via :mod:`fools.realtime`.
+phases (build, defend, between), and persistence updates on existing Django
+models. It also triggers WebSocket broadcasts via fools.realtime.
 
 Typical flow:
     #. Players create or join a lobby, toggle ready, owner calls ``start_game``.
@@ -43,6 +43,8 @@ from fools.models import (
     TableCard,
     Turn,
 )
+from fools.card_catalog import ensure_playing_cards_for_deck_size
+from fools.realtime import broadcast_game, broadcast_lobby, broadcast_lobby_list
 from chat.services import (
     broadcast_chat_message,
     get_lobby_chat,
@@ -50,8 +52,6 @@ from chat.services import (
     record_lobby_notice,
     remove_user_from_lobby_chat,
 )
-from fools.card_catalog import ensure_playing_cards_for_deck_size
-from fools.realtime import broadcast_game, broadcast_lobby, broadcast_lobby_list
 
 logger = logging.getLogger(__name__)
 _PUBLIC_EVENT_LIMIT = 8
@@ -65,16 +65,13 @@ PHASE_TAKING = "taking"
 
 
 def rank_values_for_deck(card_count: int) -> list[int]:
-    """Return ordered rank *values* (ints) included in a 24/36/52-card shoe.
+    """Return the rank values included in a deck of the given size.
 
     Args:
-        card_count: One of ``24``, ``36``, or ``52``.
-
-    Returns:
-        List of rank values from low to high (e.g. six..ace for 36 cards).
+        card_count: Number of cards (24, 36, or 52).
 
     Raises:
-        ValueError: If ``card_count`` is not supported.
+        ValueError: If the deck size is unsupported.
     """
     if card_count == 52:
         return list(range(2, 15))
@@ -95,7 +92,7 @@ def max_players_for_deck(card_count: int) -> int:
     Each seat is dealt :data:`OPENING_HAND` cards before anyone plays.
 
     Args:
-        card_count: Deck size, such as 24, 36, or 52.
+        card_count: Deck size.
 
     Returns:
         The largest whole number of seats that deck can deal.

@@ -1,6 +1,6 @@
 """Tests for deck and card management models.
 
-This module tests models responsible for managing the state of cards in a game:
+This module tests models responsible for managing the state of cards in the game:
 - GameDeck: The main draw pile.
 - PlayerHand: Cards held by a player.
 - TableCard: Attacking and defending cards in play.

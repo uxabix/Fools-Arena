@@ -1,6 +1,6 @@
 /**
  * Shared chat history: grouping, stick-to-bottom, older pages, and read marks.
- * Direct chats, the lobby, and the table all use this so those parts match.
+ * Direct messages, the lobby chat, and the game chat all use this so those parts match.
  */
 (function () {
   "use strict";
@@ -109,15 +109,19 @@
       if (name) name.classList.remove("visually-hidden");
       var sent = new Date(line.getAttribute("data-sent-at") || "");
       var sender = line.getAttribute("data-sender-id") || "";
-      var grouped = previous
-        && kind !== "system"
-        && previous.kind !== "system"
-        && sender
-        && sender === previous.sender
+      var hasPrevious = !!previous;
+      var notSystem = hasPrevious
+        && kind !== "system" && previous.kind !== "system";
+      var sameUser = hasPrevious
+        && sender && sender === previous.sender;
+      var sameTimeGroup = hasPrevious
         && !isNaN(sent.getTime())
         && !isNaN(previous.sent.getTime())
         && sent.getTime() - previous.sent.getTime() < GROUP_MS
         && sent.getTime() >= previous.sent.getTime();
+        
+      var grouped = notSystem
+        && sameUser && sameTimeGroup;
       if (grouped) {
         line.classList.add("is-grouped");
         if (name) name.classList.add("visually-hidden");

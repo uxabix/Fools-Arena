@@ -4,6 +4,8 @@ This module tests game creation, player management, game state tracking,
 and winner determination.
 """
 
+from datetime import timedelta
+
 import pytest
 from django.db import IntegrityError
 from django.utils import timezone
@@ -129,6 +131,9 @@ class TestGameModel:
             trump_card=basic_cards['king_spades'],
             status='in_progress'
         )
+        now = timezone.now()
+        Game.objects.filter(pk=game1.pk).update(started_at=now - timedelta(seconds=1))
+        Game.objects.filter(pk=game2.pk).update(started_at=now)
 
         games = list(Game.objects.all())
 
