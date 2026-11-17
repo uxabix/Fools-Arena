@@ -1,0 +1,32 @@
+@startuml
+title Wejście do konta
+skinparam backgroundColor #FFFDF8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F3F0EA
+  BorderColor #8A847A
+  FontColor #1C1915
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #8A847A
+}
+start
+:Ekran logowania;
+if (Ma już konto?) then (tak)
+  if (Pamięta hasło?) then (tak)
+    :Wpisuje nazwę i hasło;
+    :Lista stołów;
+    stop
+  else (nie)
+    :Reset hasła;
+    :Podaje e-mail z konta;
+    :Wraca do logowania;
+    stop
+  endif
+else (nie)
+  :Rejestracja;
+  :Nazwa, e-mail i hasło;
+  :Potwierdza konto linkiem z e-maila;
+  :Logowanie;
+  stop
+endif
+@enduml

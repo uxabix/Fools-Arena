@@ -47,6 +47,12 @@ docker compose exec web python manage.py makemigrations
 docker compose exec web pytest -v
 ```
 
+Regenerate the database diagram (`schema.png`) the same way. Details are in [Docs/Database/README.md](Docs/Database/README.md):
+
+```bash
+docker compose run --rm web python manage.py graph_models accounts chat fools -X ContentType,Session,LogEntry,Permission,Group --no-inheritance --pydot -o schema.png
+```
+
 If containers are not running yet, you can use a one-off container (starts dependencies per Compose file):
 
 ```bash

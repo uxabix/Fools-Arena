@@ -1,0 +1,44 @@
+@startuml
+title Nawigacja między widokami
+skinparam backgroundColor #FFFDF8
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #F3F0EA
+  BorderColor #8A847A
+  FontColor #1C1915
+}
+skinparam arrowColor #5C564C
+
+rectangle "Gość" {
+  rectangle "Logowanie" as login
+  rectangle "Rejestracja" as register
+  rectangle "Reset hasła" as reset
+}
+rectangle "Zalogowany" {
+  rectangle "Lista stołów" as list
+  rectangle "Poczekalnia" as lobby
+  rectangle "Stół" as table
+  rectangle "Wynik partii" as result
+  rectangle "Profil" as profile
+  rectangle "Czat" as chat
+  rectangle "Szukanie gracza" as find
+}
+
+login --> register
+register --> login
+login --> reset
+reset --> login
+login --> list
+list --> lobby
+lobby --> list
+lobby --> table
+table --> result
+result --> table : Show table /\nShow result
+result --> lobby
+result --> list
+list --> profile
+list --> chat
+profile --> chat
+chat --> find
+find --> chat
+@enduml

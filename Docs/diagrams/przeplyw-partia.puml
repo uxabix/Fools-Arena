@@ -1,0 +1,39 @@
+@startuml
+title Partia
+skinparam backgroundColor #FFFDF8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F3F0EA
+  BorderColor #8A847A
+  FontColor #1C1915
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #8A847A
+}
+start
+:Lista stołów;
+if (Wybiera istniejący stół?) then (tak)
+  :Poczekalnia;
+else (nie)
+  :Formularz nowego stołu\nna tej samej liście;
+  :Poczekalnia;
+endif
+:Gracze, ustawienia, zaproszenie i czat;
+if (Gospodarz zmienia zasady?) then (tak)
+  :Zapis ustawień\nczyści gotowość;
+else (nie)
+endif
+:Start partii;
+:Stół: atak, obrona albo dobranie kart;
+:Okno wyniku;
+if (Pokazać stół bez okna?) then (tak)
+  :Ten sam stół;
+  :Show result przywraca okno wyniku;
+else (zostaje przy wyniku)
+endif
+if (Dokąd wraca?) then (do poczekalni)
+  :Poczekalnia;
+else (na listę stołów)
+  :Lista stołów;
+endif
+stop
+@enduml

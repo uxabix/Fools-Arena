@@ -1,0 +1,31 @@
+@startuml
+title Profil i rozmowa
+skinparam backgroundColor #FFFDF8
+skinparam shadowing false
+skinparam activity {
+  BackgroundColor #F3F0EA
+  BorderColor #8A847A
+  FontColor #1C1915
+  DiamondBackgroundColor #FFFFFF
+  DiamondBorderColor #8A847A
+}
+start
+if (Co otwiera?) then (profil)
+  :Statystyki i e-mail;
+  if (Co zmienia?) then (e-mail)
+    :Formularz na tym samym ekranie;
+    :Anulowanie zwija formularz;
+  else (hasło)
+    :Wysłanie linku na adres z profilu;
+  endif
+else (czat)
+  :Lista rozmów i pusta kolumna;
+  if (Ma już rozmowę?) then (tak)
+    :Otwarta rozmowa;
+  else (nie)
+    :Szukanie gracza po nazwie;
+    :Nowa rozmowa;
+  endif
+endif
+stop
+@enduml

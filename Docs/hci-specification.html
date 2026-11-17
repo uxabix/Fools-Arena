@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fools Arena — specyfikacja interfejsu</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1915;
+      --muted: #5c564c;
+      --line: #d9d1c3;
+      --card: #fffdf8;
+      --accent: #8a6a12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.5 "Segoe UI", system-ui, sans-serif;
+    }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
+    h2 { font-size: 1.35rem; margin: 2.2rem 0 0.6rem; border-top: 1px solid var(--line); padding-top: 1.2rem; }
+    h3 { font-size: 1.05rem; margin: 1.2rem 0 0.4rem; }
+    h2, h3 { break-after: avoid; }
+    p, li { color: var(--ink); }
+    .lead, .note { color: var(--muted); }
+    a { color: var(--accent); }
+    section, .flow, .wire, .swatch-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin: 12px 0;
+    }
+    .flow ol { margin: 8px 0 0; padding-left: 1.2rem; }
+    .flow li { margin: 0.25rem 0; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 0.85rem; color: var(--muted); }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+    .swatch { width: 150px; }
+    .chip { height: 48px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.15); }
+    .swatch p { margin: 6px 0 0; font-size: 0.85rem; }
+    .wires { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .wire { min-height: 280px; }
+    .wire h3 { margin-top: 0; }
+    .bar, .block, .row, .btn, .field, .felt {
+      border: 1.5px solid #8d877c;
+      background: #eeeae3;
+      border-radius: 6px;
+      margin: 6px 0;
+      padding: 6px 8px;
+      color: #3f3a33;
+      font-size: 0.82rem;
+    }
+    .btn { display: inline-block; margin-right: 6px; background: #ddd6c8; }
+    .field { height: 28px; }
+    .row { display: flex; justify-content: space-between; gap: 8px; }
+    .felt { min-height: 90px; background: #d5ddd4; }
+    img.diagram { width: 100%; height: auto; background: #fffdf8; }
+    img.diagram-narrow { display: block; width: auto; max-width: min(100%, 420px); margin: 0 auto; }
+    .node {
+      border: 1.5px solid #8d877c;
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.9rem;
+    }
+    .arrow { color: var(--muted); }
+    @media (max-width: 720px) {
+      .split, .wires { grid-template-columns: 1fr; }
+    }
+    @page { size: A4; margin: 14mm 16mm; }
+    @media print {
+      body { background: white; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      section, .flow, .wire, .swatch-card { break-inside: avoid; }
+      .flow-partia { break-before: page; }
+      img.diagram-narrow { max-width: 68mm; max-height: 215mm; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <p class="lead">Komunikacja człowiek-komputer — specyfikacja interfejsu</p>
+  <h1>Fools Arena</h1>
+  <p>Aplikacja webowa do gry karcianej przy wspólnym stole. Ten dokument opisuje temat, przepływy, nawigację, szkielety i styl. Wizualny projekt interaktywny jest w Figmie: <a href="https://www.figma.com/design/vZ0UzWZlQfjsupS6mzJbXt/Fools-Arena">Fools Arena</a>.</p>
+
+  <h2>1. Opis tematu</h2>
+  <section>
+    <p>Fools Arena to stół do gry karcianej dla kilku osób w przeglądarce. Gracz zakłada konto, wchodzi do poczekalni, siada przy stole albo zakłada własny, rozgrywa partię i może napisać do innych graczy.</p>
+    <p>Użytkownik zna zasady gry na tyle, żeby dobrać stół i wykonać ruch. Interfejs nie uczy zasad od zera długim tekstem na każdym ekranie. Krótka podpowiedź jest tylko przy ręce, w trakcie partii.</p>
+    <p>Aplikacja jest webowa. Działa w aktualnej przeglądarce na komputerze i na telefonie. Nie jest osobną aplikacją ze sklepu.</p>
+    <table>
+      <tr><th>Urządzenie</th><th>Minimalny obszar</th><th>Co musi być czytelne</th></tr>
+      <tr><td>Komputer</td><td>1280 × 720</td><td>Pełna nawigacja w nagłówku, stół i ręka obok siebie w pionie, czat w dwóch kolumnach.</td></tr>
+      <tr><td>Telefon</td><td>390 × 852</td><td>Te same zadania bez poziomego przewijania. Na stole nagłówek zwija się do Menu, a przyciski partii są w jednym rzędzie.</td></tr>
+    </table>
+    <p class="note">Poniżej 390 px szerokości układ nie jest projektowany. Między 390 a 1280 px obowiązuje układ telefonu do 899 px i układ komputera od 900 px.</p>
+  </section>
+
+  <h2>2. Przepływy użytkowników</h2>
+  <div class="flow">
+    <h3>Wejście do konta</h3>
+    <img class="diagram" src="diagrams/przeplyw-wejscie.png" alt="Diagram przepływu: wejście do konta">
+  </div>
+  <div class="flow flow-partia">
+    <h3>Partia</h3>
+    <img class="diagram diagram-narrow" src="diagrams/przeplyw-partia.png" alt="Diagram przepływu: partia">
+  </div>
+  <div class="flow">
+    <h3>Profil i rozmowa</h3>
+    <img class="diagram" src="diagrams/przeplyw-profil-czat.png" alt="Diagram przepływu: profil i rozmowa">
+  </div>
+
+  <h2>3. Nawigacja</h2>
+  <section>
+    <p>Stała nawigacja jest w nagłówku. Gość widzi Login i Register. Zalogowany gracz widzi Games, Chat i Profile. Na telefonie, na stole, te trzy cele chowają się pod Menu, żeby został rząd przycisków partii.</p>
+    <img class="diagram" src="diagrams/nawigacja.png" alt="Diagram nawigacji między widokami">
+    <p class="note">Formularz nowego stołu, ustawienia stołu, zmiana e-maila i zmiana hasła nie są osobnymi stronami. To stan tego samego ekranu. W prototypie są osobnymi kadrami tylko po to, żeby dało się w nie kliknąć.</p>
+  </section>
+
+  <h2>4. Makiety szkieletowe</h2>
+  <section>
+    <p>Szkielety są w Figmie, na stronie <a href="https://www.figma.com/design/vZ0UzWZlQfjsupS6mzJbXt/Fools-Arena?node-id=36-2">Wireframes</a>. To kopie ekranów komputera: ten sam układ, te same napisy, bez koloru, cieni i rysunku kart. Szare pola pokazują, gdzie leżą bloki.</p>
+    <p>Są tam logowanie, rejestracja, reset hasła, lista stołów, formularz nowego stołu, poczekalnia, stół w trakcie gry, koniec partii, profil oraz czat z otwartą rozmową.</p>
+  </section>
+
+  <h2>5. Style guide</h2>
+  <div class="swatch-card">
+    <p>Stół jest ciemny, a akcentem jest złoto kart i zielone sukno. Tekst główny jest jasny. Złoto nie służy do długich akapitów. Na czacie główny przycisk jest niebieski, żeby odróżnić rozmowę od partii.</p>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#0f1419"></div><p>Tło #0f1419</p></div>
+      <div class="swatch"><div class="chip" style="background:#1a2332"></div><p>Panel #1a2332</p></div>
+      <div class="swatch"><div class="chip" style="background:#243044"></div><p>Przycisk drugi #243044</p></div>
+      <div class="swatch"><div class="chip" style="background:#e8eaed"></div><p>Tekst #e8eaed</p></div>
+      <div class="swatch"><div class="chip" style="background:#9aa0a6"></div><p>Tekst drugoplanowy #9aa0a6</p></div>
+      <div class="swatch"><div class="chip" style="background:linear-gradient(#d4af37,#b8922e)"></div><p>Akcja główna, złoto</p></div>
+      <div class="swatch"><div class="chip" style="background:linear-gradient(#1a6b45,#082818)"></div><p>Sukno stołu</p></div>
+      <div class="swatch"><div class="chip" style="background:#2a6280"></div><p>Główny przycisk czatu #2a6280</p></div>
+      <div class="swatch"><div class="chip" style="background:#e57373"></div><p>Błąd #e57373</p></div>
+      <div class="swatch"><div class="chip" style="background:#81c784"></div><p>Powodzenie #81c784</p></div>
+    </div>
+    <table>
+      <tr><th>Element</th><th>Zasada</th></tr>
+      <tr><td>Font</td><td>Segoe UI, z zapasem system-ui. W Figmie Inter, bo Segoe UI nie jest dostępny. Rozmiar tytułu ekranu 28 px, tekst 15–16 px, podpis 13 px.</td></tr>
+      <tr><td>Odstęp i róg</td><td>Panel: róg 12 px, pole i przycisk: róg 8 px. Odstęp między polami formularza 16 px.</td></tr>
+      <tr><td>Przycisk główny</td><td>Złoty gradient, ciemny tekst. Na czacie niebieski #2a6280 i jasny tekst. Na stole: niebieski powrót, złote wyjście, czerwone poddanie.</td></tr>
+      <tr><td>Pole</td><td>Tło #0f1419, obrys #9aa3b2, wysokość co najmniej 44 px. Błąd: obrys #ff8a80 i jasny tekst komunikatu.</td></tr>
+      <tr><td>Ikony</td><td>Obrys, bez wypełnienia, obok napisu. Sam symbol bez napisu tylko przy oku hasła i znaku menu.</td></tr>
+      <tr><td>Karty</td><td>Koszulka czerwona, figura jasna. Ruch do wykonania ma obrys. Awatar gracza przy stole to koło z inicjałami, nie zdjęcie obowiązkowe.</td></tr>
+    </table>
+  </div>
+
+  <h2>6. Projekt interaktywny</h2>
+  <section>
+    <p>Ekrany i przejścia są w pliku Figma „Fools Arena”. Kadry komputera mają w nazwie 1280, kadry telefonu 390. Pokaz uruchamia się z zaznaczonego kadru, nie z całego pliku.</p>
+    <p>Klikalne są między innymi: logowanie i reset, lista stołów oraz założenie stołu, start partii, poddanie, pokaz stołu po końcu, zmiana e-maila i hasła, lista czatów i nowa rozmowa, oraz Games, Chat i Profile.</p>
+    <p class="note">Poza zakresem tego interfejsu: regulamin prawny, płatności, ranking sezonowy i osobna aplikacja na system telefonu.</p>
+  </section>
+</main>
+</body>
+</html>
